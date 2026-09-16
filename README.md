@@ -24,7 +24,7 @@ uv run python -m nanolm
 
 ## Datasets
 
-Using two pre-processed datasets, i.e., TinyStories and OpenWebText.
+Using two pre-processed datasets, i.e., [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) and [OpenWebText](https://huggingface.co/datasets/stanford-cs336/owt-sample).
 
 Create `data` folder if it doesn't exist:
 ```shell
@@ -54,7 +54,7 @@ Tokenization turns text into a sequence of integers (numbers). There are several
 
 Before deriving any BPE merges, we split the raw text into chunks called *pre-tokens* (words, numbers, punctuation runs, spaces) using the same regex pattern GPT-2 uses. This is done for two reasons:
 
-- Efficiency: rather than performing the merge operation (iterative loop) on the entire text corpus, we condense this into a frequency distribution of unique pre-tokens in order to save memory space. This is an improvement in the hundreds of times factor since unique words increase much slower than all text.
+- **Efficiency**: rather than performing the merge operation (iterative loop) on the entire text corpus, we condense this into a frequency distribution of unique pre-tokens in order to save memory space. This is an improvement in the hundreds of times factor since unique words increase much slower than all text.
 
     Imagine the following corpus:
     ```
@@ -75,7 +75,7 @@ Before deriving any BPE merges, we split the raw text into chunks called *pre-to
     
     This leads to an identical result with a third of the work.
 
-- Boundaries: the merging process occurs within a pre-token and goes no further than that. Hence, the word cannot be joined to the word after it, or even to the comma following it. It is also this which enables the first rule to function since all occurrences of the word can be considered one entry because they are all tokenized alike regardless of context.
+- **Boundaries**: the merging process occurs within a pre-token and goes no further than that. Hence, the word cannot be joined to the word after it, or even to the comma following it. It is also this which enables the first rule to function since all occurrences of the word can be considered one entry because they are all tokenized alike regardless of context.
 
     Imagine the following corpus:
     ```
