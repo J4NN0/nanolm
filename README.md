@@ -8,6 +8,7 @@ A language model built from scratch.
 - [Datasets](#datasets)
 - [BPE Tokenizer](#bpe-tokenizer)
   - [Pre-tokenization](#pre-tokenization)
+  - [Training BPE](#training-bpe)
 - [Resources](#resources)
 
 ## Usage
@@ -99,6 +100,60 @@ Before deriving any BPE merges, we split the raw text into chunks called *pre-to
     ```
   
     The token `the␣cat` cannot be formed because no entry contains both words, so the pair is never counted.
+
+### Training BPE
+
+The tokenizer vocabulary is a one-to-one mapping between byte-string tokens and integer IDs. Since this is a byte-level BPE tokenizer, its initial vocabulary contains every possible byte value. There are 256 values (`0` through `255`), so training always starts with 256 byte tokens, followed by any supplied special tokens.
+
+You decide in advance how large the vocabulary should ultimately be. The 256 initial byte tokens and any special tokens occupy part of that total; each learned merge adds one more token. For a final size of 260 with one special token, the initial 257 tokens leave room for three learned merges: `260 - 256 - 1 = 3`. Training can also stop naturally when no adjacent pairs remain to merge.
+
+Each pre-token is encoded as UTF-8 and split into one-byte symbols. A pre-token such as `"cat"` begins as:
+
+```
+c - a - t
+```
+
+It cannot start as the single symbol `cat`, because BPE needs separately addressable adjacent symbols to learn which parts should be combined.
+
+Imagine the pre-token counts are:
+
+```python
+pretoken_counts = {
+    "cat": 2,
+    "car": 1,
+}
+```
+
+Initially, each word is split into individual bytes:
+
+```python
+words = {
+    "cat": [b"c", b"a", b"t"], # frequency 2
+    "car": [b"c", b"a", b"r"], # frequency 1
+}
+```
+
+The trainer counts every adjacent pair, weighted by how often its word appeared:
+
+```python
+(b"c", b"a")  # occurs in "cat" twice and "car" once -> 2 + 1 = 3
+(b"a", b"t")  # occurs in "cat" twice -> 2
+(b"a", b"r")  # occurs in "car" -> 1
+```
+
+Pair counts are stored by pair, so all occurrences of `(b"c", b"a")` contribute to one total rather than becoming duplicate entries. The most  frequent pair is `(b"c", b"a")`, so BPE adds `ca` to the vocabulary with the next available ID and records the merge. It then applies that merge to every pre-token:
+
+```python
+words = {
+    "cat": [b"ca", b"t"], # frequency 2
+    "car": [b"ca", b"r"], # frequency 1
+}
+```
+
+On the next iteration, the pairs are `(b"ca", b"t")` with count `2` and `(b"ca", b"r")` with count `1`, so it would learn `b"cat"` next. 
+
+This repeats until the requested final vocabulary size is reached, or there are no pairs left to merge. If two pairs have the same frequency, the code deterministically chooses the lexicographically greater byte pair.
+
 
 ## Resources
 
