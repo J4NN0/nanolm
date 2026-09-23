@@ -2,7 +2,7 @@
 
 ## Stanford CS336 pretokenization example
 
-`src/nanolm/tokenizer/pretokenization.py` contains code adapted from
+`Pretokenizer._find_chunk_boundaries` in `src/nanolm/tokenizer/pretokenizer.py` contains code adapted from
 [`pretokenization_example.py`](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_basics/pretokenization_example.py).
 
 Copyright 2025 Stanford University
