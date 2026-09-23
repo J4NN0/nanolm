@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
 import regex as re
+from multiprocessing import Pool
+from nanolm.tokenizer.pretokenization import find_chunk_boundaries
 
 # GPT-2 pre-tokenizer pattern
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 UTF8_ENCODING = "utf-8"
 BYTE_LEVEL_TOKENIZER_VOCAB_SIZE = 256
+CHUNK_SIZE_BYTES = 50 * 1024 * 1024
 
 Pair = tuple[bytes, bytes]
 
@@ -26,14 +30,14 @@ class Tokenizer:
             vocab[len(vocab)] = special_token.encode(UTF8_ENCODING)
         return vocab
 
-    def train(self, input_path: str, vocab_size: int) -> None:
+    def train(self, input_path: str, vocab_size: int, num_processes: int | None = None) -> None:
         if self.merges:
             raise RuntimeError("Tokenizer is already trained")
 
-        with open(input_path) as f:
-            text = f.read()
+        if num_processes is None:
+            num_processes = os.cpu_count() or 1
 
-        pretoken_counts = self._pretokenize(text)
+        pretoken_counts = self._parallel_pretokenize(input_path, num_processes)
         words = self._init_word_symbols(pretoken_counts)
 
         while len(self.vocab) < vocab_size:
@@ -54,9 +58,57 @@ class Tokenizer:
                 merged_words[pretoken] = self._merge_pair(symbols, best_pair)
             words = merged_words
 
+    def _parallel_pretokenize(self, input_path: str, num_processes: int) -> dict[str, int]:
+        chunk_ranges = self._find_chunk_ranges(input_path, num_processes)
+
+        tasks: list[tuple[str, int, int]] = []
+        for start, end in chunk_ranges:
+            tasks.append((input_path, start, end))
+
+        if len(tasks) <= 1:
+            chunk_counts: list[dict[str, int]] = []
+            for task in tasks:
+                chunk_counts.append(self._pretokenize_chunk(*task))
+        else:
+            with Pool(min(num_processes, len(tasks))) as pool:
+                chunk_counts = pool.starmap(self._pretokenize_chunk, tasks)
+
+        pretoken_counts: dict[str, int] = {}
+        for counts in chunk_counts:
+            for pretoken, count in counts.items():
+                pretoken_counts[pretoken] = pretoken_counts.get(pretoken, 0) + count
+        return pretoken_counts
+
+    def _find_chunk_ranges(self, input_path: str, num_processes: int) -> list[tuple[int, int]]:
+        file_size = os.path.getsize(input_path)
+
+        if not self.special_tokens:
+            return [(0, file_size)]
+
+        # The first special token is assumed to be the document separator
+        split_special_token = self.special_tokens[0].encode(UTF8_ENCODING)
+        desired_num_chunks = max(num_processes, file_size // CHUNK_SIZE_BYTES)
+        with open(input_path, "rb") as f:
+            boundaries = find_chunk_boundaries(f, desired_num_chunks, split_special_token)
+
+        chunk_ranges: list[tuple[int, int]] = []
+        for i in range(len(boundaries) - 1):
+            chunk_ranges.append((boundaries[i], boundaries[i + 1]))
+        return chunk_ranges
+
+    def _pretokenize_chunk(self, input_path: str, start: int, end: int) -> dict[str, int]:
+        chunk_text = self._decode(input_path, start, end)
+        return self._pretokenize(chunk_text)
+
+    @staticmethod
+    def _decode(input_path: str, start: int, end: int):
+        with open(input_path, "rb") as f:
+            f.seek(start)
+            chunk = f.read(end - start)
+
+        return chunk.decode(UTF8_ENCODING, errors="ignore")
+
     def _pretokenize(self, text: str) -> dict[str, int]:
-        # Split on special tokens so no pre-token (and hence no merge) crosses them.
-        # Longest first, so overlapping special tokens match the longer one.
         if self.special_tokens:
             sorted_special_tokens = sorted(self.special_tokens, key=len, reverse=True)
             escaped_special_tokens: list[str] = []
