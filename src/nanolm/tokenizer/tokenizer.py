@@ -54,12 +54,26 @@ class Tokenizer:
                 merged_words[pretoken] = self._merge_pair(symbols, best_pair)
             words = merged_words
 
-    @staticmethod
-    def _pretokenize(text: str) -> dict[str, int]:
+    def _pretokenize(self, text: str) -> dict[str, int]:
+        # Split on special tokens so no pre-token (and hence no merge) crosses them.
+        # Longest first, so overlapping special tokens match the longer one.
+        if self.special_tokens:
+            sorted_special_tokens = sorted(self.special_tokens, key=len, reverse=True)
+            escaped_special_tokens: list[str] = []
+            for special_token in sorted_special_tokens:
+                escaped_special_tokens.append(re.escape(special_token))
+
+            special_pattern = "|".join(escaped_special_tokens)
+            segments = re.split(special_pattern, text)
+        else:
+            segments = [text]
+
         occ: dict[str, int] = {}
-        tokens = re.findall(PAT, text)
-        for token in tokens:
-            occ[token] = occ.get(token, 0) + 1
+        for segment in segments:
+            for match in re.finditer(PAT, segment):
+                token = match.group()
+                occ[token] = occ.get(token, 0) + 1
+
         return occ
 
     @staticmethod
