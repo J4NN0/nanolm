@@ -39,9 +39,9 @@ class Tokenizer:
 
         pretoken_counts = self._parallel_pretokenize(input_path, num_processes)
         words = self._init_word_symbols(pretoken_counts)
+        pair_counts, pair_to_pretokens = self._build_pair_index(words, pretoken_counts)
 
         while len(self.vocab) < vocab_size:
-            pair_counts = self._count_pairs(words, pretoken_counts)
             if not pair_counts:
                 break
 
@@ -53,10 +53,12 @@ class Tokenizer:
             new_token = best_pair[0] + best_pair[1]
             self.vocab[new_token_id] = new_token
 
-            merged_words: dict[str, list[bytes]] = {}
-            for pretoken, symbols in words.items():
-                merged_words[pretoken] = self._merge_pair(symbols, best_pair)
-            words = merged_words
+            affected_pretokens = list(pair_to_pretokens[best_pair])
+            for pretoken in affected_pretokens:
+                freq = pretoken_counts[pretoken]
+                self._remove_pretoken_pairs(pretoken, words[pretoken], freq, pair_counts, pair_to_pretokens)
+                words[pretoken] = self._merge_pair(words[pretoken], best_pair)
+                self._add_pretoken_pairs(pretoken, words[pretoken], freq, pair_counts, pair_to_pretokens)
 
     def _parallel_pretokenize(self, input_path: str, num_processes: int) -> dict[str, int]:
         chunk_ranges = self._find_chunk_ranges(input_path, num_processes)
@@ -139,18 +141,45 @@ class Tokenizer:
             words[pretoken] = symbols
         return words
 
-    @staticmethod
-    def _count_pairs(
-        words: dict[str, list[bytes]],
-        pretoken_counts: dict[str, int],
-    ) -> dict[Pair, int]:
-        pair_counts: dict[tuple[bytes, bytes], int] = {}
+    def _build_pair_index(self, words: dict[str, list[bytes]], pretoken_counts: dict[str, int]) -> tuple[dict[Pair, int], dict[Pair, set[str]]]:
+        pair_counts: dict[Pair, int] = {}
+        pair_to_pretokens: dict[Pair, set[str]] = {}
         for pretoken, symbols in words.items():
             freq = pretoken_counts[pretoken]
-            for i in range(len(symbols) - 1):
-                pair = (symbols[i], symbols[i + 1])
-                pair_counts[pair] = pair_counts.get(pair, 0) + freq
-        return pair_counts
+            self._add_pretoken_pairs(pretoken, symbols, freq, pair_counts, pair_to_pretokens)
+        return pair_counts, pair_to_pretokens
+
+    @staticmethod
+    def _add_pretoken_pairs(
+        pretoken: str,
+        symbols: list[bytes],
+        freq: int,
+        pair_counts: dict[Pair, int],
+        pair_to_pretokens: dict[Pair, set[str]],
+    ) -> None:
+        for i in range(len(symbols) - 1):
+            pair = (symbols[i], symbols[i + 1])
+            pair_counts[pair] = pair_counts.get(pair, 0) + freq
+            if pair not in pair_to_pretokens:
+                pair_to_pretokens[pair] = set()
+            pair_to_pretokens[pair].add(pretoken)
+
+    @staticmethod
+    def _remove_pretoken_pairs(
+        pretoken: str,
+        symbols: list[bytes],
+        freq: int,
+        pair_counts: dict[Pair, int],
+        pair_to_pretokens: dict[Pair, set[str]],
+    ) -> None:
+        for i in range(len(symbols) - 1):
+            pair = (symbols[i], symbols[i + 1])
+            pair_counts[pair] -= freq
+            if pair_counts[pair] == 0:
+                del pair_counts[pair]
+                del pair_to_pretokens[pair]
+            else:
+                pair_to_pretokens[pair].discard(pretoken)
 
     @staticmethod
     def _merge_pair(symbols: list[bytes], pair: Pair) -> list[bytes]:
