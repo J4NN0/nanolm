@@ -12,3 +12,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nanolm"]
+
+[dependency-groups]
+dev = [
+    "py-spy>=0.4.2",
+]
