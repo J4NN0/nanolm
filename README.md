@@ -199,7 +199,6 @@ uv run python -m nanolm.profiling --input-path data/owt_train.txt --vocab-size 3
 
 cProfile only observes the main process, so with more than one process the pre-tokenization workers do not appear individually; their total wall time is still reported under `pretokenize_file`. The full profile is saved to `profiles/train.prof` and can be explored with `uvx snakeviz profiles/train.prof`.
 
-
 ## Resources
 
 - [Stanford CS336: Language Modeling from Scratch](https://cs336.stanford.edu/)
