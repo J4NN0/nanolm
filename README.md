@@ -165,22 +165,22 @@ Take this corpus (spaces ignored for simplicity):
 pretoken_counts = {"low": 5, "lower": 2, "widest": 3, "newest": 6}
 ```
 
-1. Train from pre-token frequencies: As described in [Pre-tokenization](#pre-tokenization), the trainer stores each distinct pre-token once together with its frequency. The file is split into chunks at `<|endoftext|>` boundaries. A pool of worker processes then pre-tokenizes those chunks concurrently, with each worker handling one chunk at a time.
+Every merge decision depends on pair counts over the whole corpus. Computing them from the raw text would mean walking through every occurrence of every word, again and again. Instead, as described in [Pre-tokenization](#pre-tokenization), the trainer stores each distinct pre-token once together with its frequency, and counts each of its pairs once, weighted by that frequency. Building this table still requires one full pass over the file, so the file is split into chunks at `<|endoftext|>` boundaries, and a pool of worker processes pre-tokenizes those chunks concurrently, with each worker handling one chunk at a time.
 
-2. Update pair statistics locally: Before the first merge, the trainer records the weighted count of every adjacent pair and the pre-tokens that contain it. For example, the pair `s - t` occurs nine times: three in `widest` and six in `newest`. A reverse lookup associates that pair with those two pre-tokens:
+After each merge, the pair counts must reflect the new symbol sequences. The straightforward approach is to recount every pair in every pre-token, even though a single merge only changes the few pre-tokens that contain the merged pair. Instead, the trainer computes the counts once, before the first merge, and then keeps them up to date. Alongside the weighted count of every adjacent pair, it records the pre-tokens that contain it. For example, the pair `s - t` occurs nine times: three in `widest` and six in `newest`. A reverse lookup associates that pair with those two pre-tokens:
 
-       s - t: 9 occurrences
-       s - t appears in: widest, newest
+```
+s - t: 9 occurrences
+s - t appears in: widest, newest
+```
 
-   When `s - t` becomes `st`, only `widest` and `newest` need to be revisited. Their previous pair contributions are removed, their symbol sequences are updated, and their new pair contributions are added. The cost of a merge therefore depends on how many pre-tokens contain the chosen pair.
+When `s - t` becomes `st`, the reverse lookup shows that only `widest` and `newest` need to be revisited, while `low` and `lower` are left untouched. Their previous pair contributions are removed, their symbol sequences are updated, and their new pair contributions are added. The cost of a merge therefore depends on how many pre-tokens contain the chosen pair, rather than on the size of the corpus.
 
-3. Prioritize the most frequent pair: Pair counts are also stored in a max-heap, ordered first by count and then by byte pair to break ties deterministically. The most frequent current candidate is available at the top of the heap. This matters as the number of distinct pairs grows.
+With the counts kept up to date, each iteration still has to select the pair with the highest count. Scanning the pair counts gives the right answer, but it visits every distinct pair on every merge, and that number keeps growing as new tokens form new pairs: on OpenWebText it reaches 3.2M. Instead, pair counts are also stored in a max-heap, ordered first by count and then by byte pair to break ties deterministically, so the most frequent current candidate is always available at the top of the heap.
 
-   The heap is maintained lazily to limit work when counts change:
-     - Decreased counts are checked at the top. After merging `s - t`, the heap can still contain `e - s` with a priority of 9 even though its current count is 0. When that entry reaches the top, its priority is checked against the current count. Stale entries are discarded; pairs that still occur are added back with their updated count.
-     - Increased counts are added immediately. Only pairs adjacent to the newly created token can gain occurrences. In this example, `e - st` has a count of 9 and becomes the next merge, `est`.
+Updating the heap on every count change would bring back much of that cost, so the heap is maintained lazily. A decreased count is only corrected when its entry reaches the top. After merging `s - t`, the heap can still contain `e - s` with a priority of 9 even though its current count is 0. When that entry reaches the top, its priority is checked against the current count: stale entries are discarded, and pairs that still occur are added back with their updated count. An increased count, on the other hand, is added immediately. Only pairs adjacent to the newly created token can gain occurrences, so only those are pushed. In this example, `e - st` is pushed with a count of 9 and becomes the next merge, `est`.
 
-   Each pair retains a heap entry whose priority is at least its current count. Once the priority at the top matches the current count, it identifies the most frequent pair. Selecting that pair costs O(log n) on average.
+As a result, each pair retains a heap entry whose priority is at least its current count. Once the priority at the top matches the current count, it identifies the most frequent pair, and selecting that pair costs O(log n) on average.
 
 Training performance with the `<|endoftext|>` special token, on a 10-core Apple Silicon machine (Python 3.9), with pre-tokenization running on 10 processes:
 
