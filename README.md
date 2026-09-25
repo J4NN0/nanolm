@@ -8,7 +8,8 @@ A language model built from scratch.
 - [Datasets](#datasets)
 - [BPE Tokenizer](#bpe-tokenizer)
   - [Pre-tokenization](#pre-tokenization)
-  - [Training BPE](#training-bpe)
+  - [BPE Training](#bpe-training)
+  - [Optimizations](#optimizations)
 - [Resources](#resources)
 
 ## Usage
@@ -101,7 +102,7 @@ Before deriving any BPE merges, we split the raw text into chunks called *pre-to
   
     The token `the␣cat` cannot be formed because no entry contains both words, so the pair is never counted.
 
-### Training BPE
+### BPE Training
 
 The tokenizer vocabulary is a one-to-one mapping between byte-string tokens and integer IDs. Since this is a byte-level BPE tokenizer, its initial vocabulary contains every possible byte value. There are 256 values (`0` through `255`), so training always starts with 256 byte tokens, followed by any supplied special tokens.
 
@@ -153,6 +154,42 @@ words = {
 On the next iteration, the pairs are `(b"ca", b"t")` with count `2` and `(b"ca", b"r")` with count `1`, so it would learn `b"cat"` next. 
 
 This repeats until the requested final vocabulary size is reached, or there are no pairs left to merge. If two pairs have the same frequency, the code deterministically chooses the lexicographically greater byte pair.
+
+### Optimizations
+
+BPE training repeatedly finds the most frequent adjacent pair and merges it. The trainer keeps the information needed for that decision up to date as merges are learned, which keeps each iteration focused on the affected pre-tokens and pairs.
+
+Take this corpus (spaces ignored for simplicity):
+
+```python
+pretoken_counts = {"low": 5, "lower": 2, "widest": 3, "newest": 6}
+```
+
+1. Train from pre-token frequencies: As described in [Pre-tokenization](#pre-tokenization), the trainer stores each distinct pre-token once together with its frequency. The file is split into chunks at `<|endoftext|>` boundaries. A pool of worker processes then pre-tokenizes those chunks concurrently, with each worker handling one chunk at a time.
+
+2. Update pair statistics locally: Before the first merge, the trainer records the weighted count of every adjacent pair and the pre-tokens that contain it. For example, the pair `s - t` occurs nine times: three in `widest` and six in `newest`. A reverse lookup associates that pair with those two pre-tokens:
+
+       s - t: 9 occurrences
+       s - t appears in: widest, newest
+
+   When `s - t` becomes `st`, only `widest` and `newest` need to be revisited. Their previous pair contributions are removed, their symbol sequences are updated, and their new pair contributions are added. The cost of a merge therefore depends on how many pre-tokens contain the chosen pair.
+
+3. Prioritize the most frequent pair: Pair counts are also stored in a max-heap, ordered first by count and then by byte pair to break ties deterministically. The most frequent current candidate is available at the top of the heap. This matters as the number of distinct pairs grows.
+
+   The heap is maintained lazily to limit work when counts change:
+     - Decreased counts are checked at the top. After merging `s - t`, the heap can still contain `e - s` with a priority of 9 even though its current count is 0. When that entry reaches the top, its priority is checked against the current count. Stale entries are discarded; pairs that still occur are added back with their updated count.
+     - Increased counts are added immediately. Only pairs adjacent to the newly created token can gain occurrences. In this example, `e - st` has a count of 9 and becomes the next merge, `est`.
+
+   Each pair retains a heap entry whose priority is at least its current count. Once the priority at the top matches the current count, it identifies the most frequent pair. Selecting that pair costs O(log n) on average.
+
+Training performance with the `<|endoftext|>` special token, on a 10-core Apple Silicon machine (Python 3.9), with pre-tokenization running on 10 processes:
+
+| Dataset | Vocab size | Pre-tokenization | Unique pre-tokens | Pair-statistics setup | Pair selection | Pair merging | Total |
+|---|---|---|---|---|---|---|---|
+| TinyStories train (2.2 GB) | 10,000 | 24 s | 60K | 0.1 s | 0.03 s | 1.2 s | ~26 s |
+| OpenWebText train (11.9 GB) | 32,000 | 123 s | 6.6M | 24 s | 0.6 s | 375 s | ~523 s |
+
+Picking the best pair is now negligible. On OpenWebText, most of the time is spent applying merges, because the first merges combine very common byte pairs that appear in a large share of all pre-tokens.
 
 
 ## Resources
