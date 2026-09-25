@@ -191,6 +191,14 @@ Training performance with the `<|endoftext|>` special token, on a 10-core Apple 
 
 Picking the best pair is now negligible. On OpenWebText, most of the time is spent applying merges, because the first merges combine very common byte pairs that appear in a large share of all pre-tokens.
 
+These measurements can be reproduced with the `nanolm.profiling` package, which trains the tokenizer under [cProfile](https://docs.python.org/3/library/profile.html) and prints a breakdown of the time spent in each step:
+```shell
+uv run python -m nanolm.profiling --input-path data/TinyStoriesV2-GPT4-train.txt --vocab-size 10000 --num-processes 10
+uv run python -m nanolm.profiling --input-path data/owt_train.txt --vocab-size 32000 --num-processes 10
+```
+
+cProfile only observes the main process, so with more than one process the pre-tokenization workers do not appear individually; their total wall time is still reported under `pretokenize_file`. The full profile is saved to `profiles/train.prof` and can be explored with `uvx snakeviz profiles/train.prof`.
+
 
 ## Resources
 
