@@ -24,6 +24,8 @@ Run the project:
 uv run python -m nanolm
 ```
 
+This trains a BPE tokenizer and prints its merges. The dataset, vocabulary size, and special tokens are set at the top of `src/nanolm/__main__.py`. The tokenizer is saved to `tokenizers/<dataset>_<vocab size>.json` and loaded on later runs; delete the file to retrain.
+
 ## Datasets
 
 Using two pre-processed datasets, i.e., [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) and [OpenWebText](https://huggingface.co/datasets/stanford-cs336/owt-sample).
