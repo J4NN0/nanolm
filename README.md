@@ -11,8 +11,8 @@ A language model built from scratch.
   - [BPE Training](#bpe-training)
   - [Optimizations](#optimizations)
 - [Transformer](#transformer)
-  - [Linear](#linear)
-  - [Embedding](#embedding)
+  - [Linear Module](#linear-module)
+  - [Embedding Module](#embedding-module)
 - [Resources](#resources)
 
 ## Usage
@@ -210,7 +210,7 @@ The Transformer language model starts by mapping each token ID to a dense vector
 
 ![transformer.png](docs/transformer.png)
 
-### Linear
+### Linear Module
 
 A linear layer transforms a vector $x$ of size `d_in` into a vector $y$ of size `d_out` by multiplying it with a learned weight matrix $W$ of shape `(d_out, d_in)`:
 
@@ -236,7 +236,7 @@ $$\sigma = \sqrt{\frac{2}{d_{in} + d_{out}}}$$
 
 Larger layers start with smaller weights: when an output combines many inputs, smaller weights help keep the result from growing too large. Including both dimensions also helps keep the signals used during training at a useful scale.
 
-### Embedding
+### Embedding Module
 
 The tokenizer turns text into integer IDs, but an ID on its own carries no meaning: token `1820` is not "closer" to `1821` than to `5`. The embedding layer gives every token a learned vector of `d_model` numbers, and the model uses this vector in the layers that follow.
 
