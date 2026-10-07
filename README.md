@@ -12,6 +12,7 @@ A language model built from scratch.
   - [Optimizations](#optimizations)
 - [Transformer](#transformer)
   - [Linear](#linear)
+  - [Embedding](#embedding)
 - [Resources](#resources)
 
 ## Usage
@@ -234,6 +235,29 @@ Before training, the layer starts with small random weights centered around zero
 $$\sigma = \sqrt{\frac{2}{d_{in} + d_{out}}}$$
 
 Larger layers start with smaller weights: when an output combines many inputs, smaller weights help keep the result from growing too large. Including both dimensions also helps keep the signals used during training at a useful scale.
+
+### Embedding
+
+The tokenizer turns text into integer IDs, but an ID on its own carries no meaning: token `1820` is not "closer" to `1821` than to `5`. The embedding layer gives every token a learned vector of `d_model` numbers, and the model uses this vector in the layers that follow.
+
+It is a lookup table with one row per vocabulary token. Each ID selects its row:
+
+```
+weight: (vocab_size, d_model)
+
+token ID 1820 -> weight[1820] -> [0.12, -0.53, ..., 0.08]
+```
+
+A sequence of IDs becomes a sequence of vectors, adding one dimension at the end:
+
+```
+token_ids: (batch, seq_len)
+output:    (batch, seq_len, d_model)
+```
+
+During training, tokens used in similar contexts get pushed toward similar vectors, so the embedding space ends up encoding meaning: related words lie close together.
+
+The embedding weights start as random numbers centered on zero, with standard deviation `1`. Values beyond `−3` and `3` are excluded. Unlike a linear layer, an embedding lookup returns one stored vector without summing many inputs, so its standard deviation is not scaled by the layer’s dimensions.
 
 ## Resources
 
