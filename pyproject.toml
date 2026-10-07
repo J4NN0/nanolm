@@ -3,7 +3,9 @@ name = "nanolm"
 version = "0.1.0"
 requires-python = ">=3.9"
 dependencies = [
+    "numpy>=2.0.2",
     "regex>=2026.1.15",
+    "torch>=2.8.0",
 ]
 
 [build-system]

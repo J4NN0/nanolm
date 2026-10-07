@@ -10,6 +10,8 @@ A language model built from scratch.
   - [Pre-tokenization](#pre-tokenization)
   - [BPE Training](#bpe-training)
   - [Optimizations](#optimizations)
+- [Transformer](#transformer)
+  - [Linear](#linear)
 - [Resources](#resources)
 
 ## Usage
@@ -200,6 +202,38 @@ uv run python -m nanolm.profiling --input-path data/owt_train.txt --vocab-size 3
 ```
 
 cProfile only observes the main process, so with more than one process the pre-tokenization workers do not appear individually; their total wall time is still reported under `pretokenize_file`. The full profile is saved to `profiles/train.prof` and can be explored with `uvx snakeviz profiles/train.prof`.
+
+## Transformer
+
+The Transformer language model starts by mapping each token ID to a dense vector with its input embedding. It processes those vectors through `num_layers` Transformer blocks, then uses a learned linear projection—called the output embedding or LM head—to produce logits for the next token.
+
+![transformer.png](docs/transformer.png)
+
+### Linear
+
+A linear layer transforms a vector $x$ of size `d_in` into a vector $y$ of size `d_out` by multiplying it with a learned weight matrix $W$ of shape `(d_out, d_in)`:
+
+$$y = Wx$$
+
+Each output value is a weighted sum of all input values, and $W$ holds the weights. Training adjusts them so that the outputs become useful features for the task.
+
+Transformers use linear layers throughout the model. Attention uses them to create queries, keys, and values. The feed-forward network uses them to expand and then shrink each token vector. The final linear layer produces one score, called a logit, for each token in the vocabulary.
+
+A linear layer usually also adds a learned bias, $y = Wx + b$ (i.e., an extra learned number added to each output). Some models (e.g. LLaMA) leave the bias out because, same as this implementation.
+
+In practice, inputs are stored as rows with the feature dimension last, so the layer computes $y = xW^T$:
+
+```
+x:   (batch, seq_len, d_in)
+W^T: (d_in, d_out)
+y:   (batch, seq_len, d_out)
+```
+
+Before training, the layer starts with small random weights centered around zero. Their typical size is set by:
+
+$$\sigma = \sqrt{\frac{2}{d_{in} + d_{out}}}$$
+
+Larger layers start with smaller weights: when an output combines many inputs, smaller weights help keep the result from growing too large. Including both dimensions also helps keep the signals used during training at a useful scale.
 
 ## Resources
 
