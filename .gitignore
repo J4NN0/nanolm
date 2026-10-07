@@ -223,3 +223,6 @@ data/TinyStories*
 
 # Profiling output
 profiles/
+
+# Trained tokenizers
+tokenizers/
