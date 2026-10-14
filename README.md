@@ -16,6 +16,7 @@ A language model built from scratch.
   - [Root Mean Square Layer Normalization](#root-mean-square-layer-normalization)
   - [SwiGLU Feed-Forward Network](#swiglu-feed-forward-network)
   - [Rotary Positional Embedding](#rotary-positional-embedding)
+  - [Softmax](#softmax)
 - [Resources](#resources)
 
 ## Usage
@@ -350,6 +351,36 @@ $$\langle R_m q, R_n k \rangle = \langle q, R_{n-m} k \rangle$$
 The attention score therefore depends on how far apart two tokens are, not on where they sit in the sequence. A query at position `5` attending to a key at position `2` gets exactly the same score as the same vectors at positions `20` and `17`. Language works this way too: what matters is that a word came three tokens earlier, not that it was the 17th token of the document.
 
 RoPE has no learned parameters. Rotations do not change the length of a vector, so they move information about position into the angles without distorting the content. The cosines and sines for every position up to the maximum sequence length are computed once, ahead of time, and looked up for each token.
+
+### Softmax
+
+The model often produces raw scores (*logits*) that need to become a probability distribution: attention turns query-key scores into weights over tokens, and the output layer turns one score per vocabulary token into next-token probabilities. Softmax does this conversion:
+
+$$\text{softmax}(x)_i = \frac{e^{x_i}}{\sum_j e^{x_j}}$$
+
+Every output is between `0` and `1`, and they sum to `1`. The exponential makes all values positive and preserves their order, and it amplifies differences: a score `1` higher gets about `2.7` times more probability.
+
+```
+x          = [2,    1,    0   ]
+softmax(x) = [0.67, 0.24, 0.09]
+```
+
+Most of the probability goes to the largest score, but every value keeps a share, which is why it is a *soft* maximum: gradients reach all scores, not only the winning one. A score of $-\infty$ gets a probability of exactly `0`, which attention uses to hide tokens.
+
+Applied to a tensor, softmax normalizes along one dimension, independently for every other position. For attention scores of shape `(batch, seq_len, seq_len)`, normalizing along the last dimension gives each query a distribution over the keys.
+
+**Numerical stability.** Exponentials grow very fast: $e^{1000}$ overflows to infinity, and the division then produces $\infty / \infty$, which is undefined. Subtracting the same constant $c$ from every score does not change the result, because the factor $e^{-c}$ cancels out:
+
+$$\frac{e^{x_i - c}}{\sum_j e^{x_j - c}} = \frac{e^{-c} \, e^{x_i}}{e^{-c} \sum_j e^{x_j}} = \frac{e^{x_i}}{\sum_j e^{x_j}}$$
+
+Choosing $c = \max(x)$ makes the largest exponent $e^0 = 1$ and every other one smaller, so nothing can overflow:
+
+```
+x            = [1000, 1001, 1002]
+naive        = [nan,  nan,  nan ]
+x - max(x)   = [-2,   -1,   0   ]
+softmax(x)   = [0.09, 0.24, 0.67]
+```
 
 ## Resources
 
