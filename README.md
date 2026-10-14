@@ -15,6 +15,7 @@ A language model built from scratch.
   - [Embedding Module](#embedding-module)
   - [Root Mean Square Layer Normalization](#root-mean-square-layer-normalization)
   - [SwiGLU Feed-Forward Network](#swiglu-feed-forward-network)
+  - [Rotary Positional Embedding](#rotary-positional-embedding)
 - [Resources](#resources)
 
 ## Usage
@@ -322,6 +323,33 @@ Because the gate is computed from the input itself, the network can switch featu
 classic: 2 × 512 × 2048 = 2,097,152 parameters
 SwiGLU:  3 × 512 × 1344 = 2,064,384 parameters
 ```
+
+### Rotary Positional Embedding
+
+Attention compares every token with every other token, but on its own it has no notion of order: `dog bites man` and `man bites dog` contain the same tokens and would look identical. Information about position has to be injected explicitly.
+
+Rotary Positional Embedding (RoPE) does this by rotating the query and key vectors used by attention, by an angle that depends on the token's position. The vector of size `d_k` is split into pairs of adjacent values, and each pair is treated as a point in 2D and rotated by an angle $\theta_{i,k}$:
+
+$$\begin{pmatrix} x'_{2k} \\ x'_{2k+1} \end{pmatrix} = \begin{pmatrix} \cos\theta_{i,k} & -\sin\theta_{i,k} \\ \sin\theta_{i,k} & \cos\theta_{i,k} \end{pmatrix} \begin{pmatrix} x_{2k} \\ x_{2k+1} \end{pmatrix} \qquad \theta_{i,k} = i \cdot \Theta^{-2k/d_k}$$
+
+where $i$ is the token's position, $k = 0, \dots, d_k/2 - 1$ is the index of the pair, and $\Theta$ is a constant, usually `10000`.
+
+Each pair rotates at its own speed. The first pairs rotate quickly, by about one radian per position, so they distinguish neighboring tokens. The last pairs rotate very slowly, so they change meaningfully only across long distances. Together they encode position at many scales, a bit like the hands of a clock:
+
+```
+d_k = 8, Θ = 10000
+
+pair k:            0      1      2      3
+angle per step:    1      0.1    0.01   0.001   (radians)
+```
+
+**Why rotation.** Attention compares a query $q$ at position $m$ with a key $k$ at position $n$ through their dot product. Rotating both and taking the dot product gives the same result as rotating only by their difference:
+
+$$\langle R_m q, R_n k \rangle = \langle q, R_{n-m} k \rangle$$
+
+The attention score therefore depends on how far apart two tokens are, not on where they sit in the sequence. A query at position `5` attending to a key at position `2` gets exactly the same score as the same vectors at positions `20` and `17`. Language works this way too: what matters is that a word came three tokens earlier, not that it was the 17th token of the document.
+
+RoPE has no learned parameters. Rotations do not change the length of a vector, so they move information about position into the angles without distorting the content. The cosines and sines for every position up to the maximum sequence length are computed once, ahead of time, and looked up for each token.
 
 ## Resources
 
