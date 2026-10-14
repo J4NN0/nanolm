@@ -11,8 +11,8 @@ A language model built from scratch.
   - [BPE Training](#bpe-training)
   - [Optimizations](#optimizations)
 - [Transformer](#transformer)
-  - [Linear Module](#linear-module)
   - [Embedding Module](#embedding-module)
+  - [Linear Module](#linear-module)
   - [Root Mean Square Layer Normalization](#root-mean-square-layer-normalization)
   - [SwiGLU Feed-Forward Network](#swiglu-feed-forward-network)
   - [Rotary Positional Embedding](#rotary-positional-embedding)
@@ -212,21 +212,42 @@ cProfile only observes the main process, so with more than one process the pre-t
 
 ## Transformer
 
-The Transformer language model starts by mapping each token ID to a dense vector with its input embedding. It processes those vectors through `num_layers` Transformer blocks, then uses a learned linear projection—called the output embedding or LM head—to produce logits for the next token.
+The tokenizer gives us token IDs, but a Transformer language model needs vectors it can work with. An embedding turns each ID into a vector. Transformer blocks then let tokens draw on earlier tokens and process what they find. Finally, a linear layer produces a score (a *logit*) for each possible next token. The diagram shows this path. This repository currently implements the components below individually; it does not yet assemble the full model.
 
 ![transformer.png](docs/transformer.png)
 
+### Embedding Module
+
+An ID on its own carries no meaning: token `1820` is not "closer" to `1821` than to `5`. An embedding gives every token a learned vector of `d_model` numbers. It is a lookup table with one row per vocabulary token, and each ID selects its row:
+
+```
+weight: (vocab_size, d_model)
+
+token ID 1820 -> weight[1820] -> [0.12, -0.53, ..., 0.08]
+```
+
+A sequence of IDs becomes a sequence of vectors:
+
+```
+token_ids: (batch, seq_len)
+output:    (batch, seq_len, d_model)
+```
+
+Training changes these vectors along with the rest of the model, letting it represent useful relationships between tokens.
+
+The table starts with random values centered on zero, with standard deviation `1` and values limited to `−3` through `3`. Each lookup returns one stored row; it does not sum values from multiple rows.
+
 ### Linear Module
 
-A linear layer transforms a vector $x$ of size `d_in` into a vector $y$ of size `d_out` by multiplying it with a learned weight matrix $W$ of shape `(d_out, d_in)`:
+The model repeatedly needs to turn one set of features into another. A linear layer does this with a learned weight matrix $W$. For an input vector $x$ of size `d_in`, it produces an output $y$ of size `d_out`:
 
 $$y = Wx$$
 
-Each output value is a weighted sum of all input values, and $W$ holds the weights. Training adjusts them so that the outputs become useful features for the task.
+Each output is a weighted sum of the inputs. Training adjusts those weights to make the resulting features useful.
 
 Transformers use linear layers throughout the model. Attention uses them to create queries, keys, and values. The feed-forward network uses them to expand and then shrink each token vector. The final linear layer produces one score, called a logit, for each token in the vocabulary.
 
-A linear layer usually also adds a learned bias, $y = Wx + b$ (i.e., an extra learned number added to each output). Some models (e.g. LLaMA) leave the bias out because, same as this implementation.
+Some linear layers also add a learned bias, $y = Wx + b$. This implementation, like LLaMA, uses no bias.
 
 In practice, inputs are stored as rows with the feature dimension last, so the layer computes $y = xW^T$:
 
@@ -236,38 +257,15 @@ W^T: (d_in, d_out)
 y:   (batch, seq_len, d_out)
 ```
 
-Before training, the layer starts with small random weights centered around zero. Their typical size is set by:
+The weights start as small random numbers centered on zero. Their scale depends on the input and output sizes:
 
 $$\sigma = \sqrt{\frac{2}{d_{in} + d_{out}}}$$
 
-Larger layers start with smaller weights: when an output combines many inputs, smaller weights help keep the result from growing too large. Including both dimensions also helps keep the signals used during training at a useful scale.
-
-### Embedding Module
-
-The tokenizer turns text into integer IDs, but an ID on its own carries no meaning: token `1820` is not "closer" to `1821` than to `5`. The embedding layer gives every token a learned vector of `d_model` numbers, and the model uses this vector in the layers that follow.
-
-It is a lookup table with one row per vocabulary token. Each ID selects its row:
-
-```
-weight: (vocab_size, d_model)
-
-token ID 1820 -> weight[1820] -> [0.12, -0.53, ..., 0.08]
-```
-
-A sequence of IDs becomes a sequence of vectors, adding one dimension at the end:
-
-```
-token_ids: (batch, seq_len)
-output:    (batch, seq_len, d_model)
-```
-
-During training, tokens used in similar contexts get pushed toward similar vectors, so the embedding space ends up encoding meaning: related words lie close together.
-
-The embedding weights start as random numbers centered on zero, with standard deviation `1`. Values beyond `−3` and `3` are excluded. Unlike a linear layer, an embedding lookup returns one stored vector without summing many inputs, so its standard deviation is not scaled by the layer’s dimensions.
+Smaller starting weights help keep outputs at a useful scale when a layer combines many inputs.
 
 ### Root Mean Square Layer Normalization
 
-As token vectors flow through a deep stack of blocks, their scale drifts: some grow very large, others shrink toward zero. Layers then receive inputs at unpredictable scales, and training becomes unstable. Normalization fixes this by rescaling each token vector to a consistent size before it enters attention or the feed-forward network.
+As token vectors pass through blocks, their values can grow or shrink. Normalization keeps their scale more consistent, making the next layer easier to train. A block applies it before attention and before the feed-forward network.
 
 Root Mean Square Layer Normalization (RMSNorm) divides each token vector $a$ of size `d_model` by its root mean square, then multiplies it by a learned gain $g$:
 
@@ -281,31 +279,28 @@ RMS(a) = sqrt((9 + 16 + 0 + 144) / 4) = 6.5
 a/RMS  = [0.46, -0.62, 0, 1.85]   (RMS = 1)
 ```
 
-The direction of the vector is preserved, only its overall size changes. Each token is normalized on its own, using only its own `d_model` values.
+Dividing by the RMS changes the vector's overall size while preserving its direction. The learned gain $g$ then lets the model adjust each dimension separately; it starts at `1`. The small constant $\varepsilon$ (`1e-5`) prevents division by zero. Each token is normalized using only its own `d_model` values.
 
-- **Gain $g$**: one learned value per dimension, initialized to `1`. It lets the model scale individual dimensions back up or down where that helps.
-- **Epsilon $\varepsilon$**: a small constant (`1e-5`) that avoids dividing by zero when a vector is all zeros.
-
-RMSNorm is a simplification of LayerNorm, which also subtracts the mean of the vector and adds a learned bias. Dropping these steps reaches about the same quality with less computation, which is why modern LLMs such as LLaMA use RMSNorm.
+RMSNorm is simpler than LayerNorm: it does not subtract the mean or add a learned bias. That makes it cheaper to compute while still keeping the vector scale under control.
 
 ### SwiGLU Feed-Forward Network
 
-Inside each block, attention lets tokens exchange information with each other. The feed-forward network (FFN) then processes every token on its own: it expands the token vector from `d_model` to a larger size `d_ff`, applies a nonlinearity, and projects it back to `d_model`. The wider intermediate space gives the model room to compute, and a large share of what the model learns is stored in these weights.
+Attention brings information from other tokens into each token's vector. A feed-forward network (FFN) then works on each token separately. It expands the vector from `d_model` to a wider `d_ff`, transforms it, and projects it back to `d_model`.
 
-The nonlinearity is essential. Without it, the expansion and the projection would collapse into a single linear layer, since $W_2(W_1x) = (W_2W_1)x$, and stacking blocks would add no expressive power.
+This middle transformation needs a nonlinearity. Otherwise, two linear layers in a row would behave like one: $W_2(W_1x) = (W_2W_1)x$.
 
-**SiLU.** The activation function is SiLU (also called Swish):
+SwiGLU uses the smooth activation function SiLU (also called Swish):
 
 $$\text{SiLU}(x) = x \cdot \sigma(x) = \frac{x}{1 + e^{-x}}$$
 
-Like ReLU, it is close to $x$ for large positive inputs and close to $0$ for large negative ones, but it is smooth around zero, which gives better-behaved gradients.
+For large positive inputs, SiLU is close to $x$; for large negative inputs, it approaches `0`. Its smooth transition around zero also makes it useful during training.
 
 ```
 x       = [-4,    -1,    0,  1,    4   ]
 SiLU(x) = [-0.07, -0.27, 0,  0.73, 3.93]
 ```
 
-**Gating.** A gated linear unit (GLU) projects the input twice. One projection goes through the activation and acts as a gate, deciding value by value how much of the other projection passes through:
+SwiGLU also uses a gate. It makes two projections of the input, passes one through SiLU, and multiplies them value by value. The SiLU branch controls how much of the other branch passes through:
 
 $$\text{FFN}(x) = W_2\big(\text{SiLU}(W_1x) \odot W_3x\big)$$
 
@@ -318,9 +313,9 @@ gate * value:     (batch, seq_len, d_ff)
 W2 (...):         (batch, seq_len, d_model)
 ```
 
-Because the gate is computed from the input itself, the network can switch features on and off depending on the token, which in practice trains to better quality than a plain activation. The combination of SiLU and GLU is called SwiGLU, and it is used by LLaMA, PaLM, and most modern LLMs.
+Because the gate depends on the input, different tokens can emphasize different features. The final projection brings the result back to `d_model`.
 
-**Size.** A classic FFN has two matrices and uses $d_{ff} = 4 \cdot d_{model}$. SwiGLU has three, so $d_{ff}$ is set to about $\frac{8}{3} \cdot d_{model}$ to keep the parameter count roughly the same, rounded to a multiple of 64 for efficient hardware use. For $d_{model} = 512$:
+SwiGLU uses three matrices instead of the two in a basic FFN. To keep their parameter counts similar, `d_ff` is about $\frac{8}{3} \cdot d_{model}$ instead of $4 \cdot d_{model}$, rounded to a multiple of 64. For $d_{model} = 512$:
 
 ```
 classic: 2 × 512 × 2048 = 2,097,152 parameters
@@ -329,15 +324,15 @@ SwiGLU:  3 × 512 × 1344 = 2,064,384 parameters
 
 ### Rotary Positional Embedding
 
-Attention compares every token with every other token, but on its own it has no notion of order: `dog bites man` and `man bites dog` contain the same tokens and would look identical. Information about position has to be injected explicitly.
+Attention compares tokens, but those comparisons alone do not tell it where a token appears. Word order matters: `dog bites man` and `man bites dog` mean different things. The model therefore needs a way to include position.
 
-Rotary Positional Embedding (RoPE) does this by rotating the query and key vectors used by attention, by an angle that depends on the token's position. The vector of size `d_k` is split into pairs of adjacent values, and each pair is treated as a point in 2D and rotated by an angle $\theta_{i,k}$:
+Rotary Positional Embedding (RoPE) adds position when attention compares tokens. It splits each query and key vector into pairs of values and rotates each pair by an angle based on its position. For a vector of size `d_k`:
 
 $$\begin{pmatrix} x'_{2k} \\ x'_{2k+1} \end{pmatrix} = \begin{pmatrix} \cos\theta_{i,k} & -\sin\theta_{i,k} \\ \sin\theta_{i,k} & \cos\theta_{i,k} \end{pmatrix} \begin{pmatrix} x_{2k} \\ x_{2k+1} \end{pmatrix} \qquad \theta_{i,k} = i \cdot \Theta^{-2k/d_k}$$
 
 where $i$ is the token's position, $k = 0, \dots, d_k/2 - 1$ is the index of the pair, and $\Theta$ is a constant, usually `10000`.
 
-Each pair rotates at its own speed. The first pairs rotate quickly, by about one radian per position, so they distinguish neighboring tokens. The last pairs rotate very slowly, so they change meaningfully only across long distances. Together they encode position at many scales, a bit like the hands of a clock:
+Each pair rotates at a different speed, so the rotations capture both short and long distances. For example:
 
 ```
 d_k = 8, Θ = 10000
@@ -346,17 +341,17 @@ pair k:            0      1      2      3
 angle per step:    1      0.1    0.01   0.001   (radians)
 ```
 
-**Why rotation.** Attention compares a query $q$ at position $m$ with a key $k$ at position $n$ through their dot product. Rotating both and taking the dot product gives the same result as rotating only by their difference:
+The useful property of rotation appears when attention compares a query $q$ at position $m$ with a key $k$ at position $n$. Their dot product depends on the distance between those positions:
 
 $$\langle R_m q, R_n k \rangle = \langle q, R_{n-m} k \rangle$$
 
-The attention score therefore depends on how far apart two tokens are, not on where they sit in the sequence. A query at position `5` attending to a key at position `2` gets exactly the same score as the same vectors at positions `20` and `17`. Language works this way too: what matters is that a word came three tokens earlier, not that it was the 17th token of the document.
+For the same query and key vectors, positions `5` and `2` give the same score as positions `20` and `17`: in both cases the key is three tokens earlier. This lets attention use relative position.
 
-RoPE has no learned parameters. Rotations do not change the length of a vector, so they move information about position into the angles without distorting the content. The cosines and sines for every position up to the maximum sequence length are computed once, ahead of time, and looked up for each token.
+RoPE has no learned parameters. The implementation computes the sines and cosines up to the maximum sequence length once, then looks them up for each token.
 
 ### Softmax
 
-The model often produces raw scores (*logits*) that need to become a probability distribution: attention turns query-key scores into weights over tokens, and the output layer turns one score per vocabulary token into next-token probabilities. Softmax does this conversion:
+Attention needs to turn its match scores into weights that add up to one. The model can also use the same operation to turn next-token logits into probabilities. That operation is softmax:
 
 $$\text{softmax}(x)_i = \frac{e^{x_i}}{\sum_j e^{x_j}}$$
 
@@ -367,15 +362,15 @@ x          = [2,    1,    0   ]
 softmax(x) = [0.67, 0.24, 0.09]
 ```
 
-Most of the probability goes to the largest score, but every value keeps a share, which is why it is a *soft* maximum: gradients reach all scores, not only the winning one. A score of $-\infty$ gets a probability of exactly `0`, which attention uses to hide tokens.
+The largest score gets the largest share, but the others still contribute. A score of $-\infty$ gets a weight of `0`, which attention uses to hide tokens it must not see.
 
 Applied to a tensor, softmax normalizes along one dimension, independently for every other position. For attention scores of shape `(batch, seq_len, seq_len)`, normalizing along the last dimension gives each query a distribution over the keys.
 
-**Numerical stability.** Exponentials grow very fast: $e^{1000}$ overflows to infinity, and the division then produces $\infty / \infty$, which is undefined. Subtracting the same constant $c$ from every score does not change the result, because the factor $e^{-c}$ cancels out:
+There is one practical issue: exponentials grow quickly, so $e^{1000}$ overflows. We can subtract the same constant $c$ from every score without changing softmax, because that factor cancels:
 
 $$\frac{e^{x_i - c}}{\sum_j e^{x_j - c}} = \frac{e^{-c} \, e^{x_i}}{e^{-c} \sum_j e^{x_j}} = \frac{e^{x_i}}{\sum_j e^{x_j}}$$
 
-Choosing $c = \max(x)$ makes the largest exponent $e^0 = 1$ and every other one smaller, so nothing can overflow:
+Choosing $c = \max(x)$ keeps every exponent at or below `1`:
 
 ```
 x            = [1000, 1001, 1002]
@@ -386,15 +381,11 @@ softmax(x)   = [0.09, 0.24, 0.67]
 
 ### Scaled Dot-Product Attention
 
-Attention is how tokens exchange information. The meaning of a token often depends on others: in `the animal didn't cross the street because it was tired`, the model needs to know that `it` refers to `animal`. Attention lets each token look at the other tokens and pull in what is relevant.
+Now we can put linear layers and softmax together. Attention lets a token draw information from other tokens. In `the animal didn't cross the street because it was tired`, for example, the word `it` needs context from `animal`.
 
-Each token is given three vectors, computed from its embedding by linear layers:
+Linear layers make three vectors from each token's current representation. Its *query* $q$ describes what it is looking for. Its *key* $k$ helps other tokens decide whether to look at it. Its *value* $v$ carries the information they can draw from it.
 
-- **Query** $q$: what the token is looking for.
-- **Key** $k$: what the token offers, used to decide whether it matches a query.
-- **Value** $v$: the information the token passes on when it is attended to.
-
-Each query is compared with every key, the comparisons are turned into weights, and the result is the weighted average of the values:
+Each query is compared with the keys. Softmax turns those match scores into weights, which are used to combine the values:
 
 $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
 
@@ -408,19 +399,17 @@ softmax over keys:  (n, m)                           each row sums to 1
 
 For example, if a query's scores against three keys are `[2, 1, 0]`, its weights are `[0.67, 0.24, 0.09]`, and its output is `0.67 v0 + 0.24 v1 + 0.09 v2`: mostly the first token's information, with a little of the others.
 
-The same computation runs independently for any number of leading dimensions, such as the batch and, later, the attention heads.
+The same calculation works across batches and attention heads. The division by $\sqrt{d_k}$ keeps dot products from growing too large as the vectors get wider; otherwise softmax can put nearly all the weight on one key and make training harder.
 
-**Scaling.** A dot product sums $d_k$ products, so its variance grows with $d_k$. With large vectors the scores become large, softmax puts almost all the weight on a single key, and its gradients almost vanish, which stalls learning. Dividing by $\sqrt{d_k}$ brings the variance of the scores back to about `1`.
-
-**Masking.** An optional boolean mask of shape `(n, m)` decides which keys each query may attend to. Where the mask is `False`, the score is replaced by $-\infty$ before the softmax, so that key receives a weight of exactly `0`. A language model uses this to stop each token from seeing the tokens after it.
+An optional mask controls which keys a query may use. Masked scores become $-\infty$ before softmax, giving those keys zero weight. The language model uses this to keep tokens from seeing what comes next.
 
 ### Causal Multi-Head Self-Attention
 
-In self-attention, the queries, keys, and values all come from the same sequence: each token vector $x$ is projected by three learned linear layers into its own query, key, and value. The tokens of a sequence therefore attend to each other.
+In *self-attention*, queries, keys, and values all come from the same sequence. Three learned linear layers project the current token vectors $x$ into those roles:
 
 $$Q = xW_Q^T \qquad K = xW_K^T \qquad V = xW_V^T$$
 
-**Multiple heads.** A single attention gives each token one weighted average, one way of looking at the sequence. But a token usually needs several kinds of information at once: the previous word, the subject of the sentence, a matching quote or bracket. Multi-head attention splits each `d_model` vector into $h$ smaller *heads* of size $d_k = d_{model} / h$, and runs attention in each head independently, so each can learn its own pattern. The outputs of the heads are concatenated back to `d_model` and mixed by one more linear layer $W_O$:
+One set of attention weights gives a token one way to look at the sequence. Several *heads* let it look for different patterns at once, such as a nearby word or a matching bracket. The model splits each `d_model` vector into $h$ heads of size $d_k = d_{model} / h$ and runs attention in each one. It then joins their outputs and mixes them with another linear layer $W_O$:
 
 $$\text{MultiHead}(x) = W_O \, \text{Concat}(\text{head}_1, \dots, \text{head}_h) \qquad \text{head}_i = \text{Attention}(Q_i, K_i, V_i)$$
 
@@ -433,11 +422,9 @@ concatenate heads:   (batch, seq_len, d_model)
 W_O:                 (batch, seq_len, d_model)
 ```
 
-Since $h \cdot d_k = d_{model}$, the cost is about the same as a single head of size `d_model`, but the model gets $h$ independent attention patterns.
+Because $h \cdot d_k = d_{model}$, splitting into heads keeps the total vector width the same. RoPE rotates the queries and keys in each head before they are compared. The values stay as they are; position affects which information is selected.
 
-**Position.** RoPE is applied to the queries and keys of every head, with the same rotation in each, right before the attention scores are computed. The values are not rotated: position should influence which tokens attend to which, not the information they pass on.
-
-**Causality.** A language model is trained to predict the next token at every position. If a token could attend to the tokens after it, it could read the answer instead of predicting it. A causal mask allows token $i$ to attend only to tokens $0, \dots, i$:
+To predict the next token at each position, the model must only use tokens it has already seen. A *causal mask* allows token $i$ to attend to tokens $0, \dots, i$:
 
 ```
          keys
@@ -448,7 +435,7 @@ query 2  ✓  ✓  ✓  ✗
 query 3  ✓  ✓  ✓  ✓
 ```
 
-Changing a token therefore never changes the outputs at earlier positions. This is what allows one sequence of $n$ tokens to provide $n$ next-token predictions in a single forward pass during training.
+So changing a later token cannot change an earlier output. During training, one sequence of $n$ tokens can provide $n$ next-token predictions in a single pass.
 
 ## Resources
 
