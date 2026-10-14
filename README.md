@@ -18,6 +18,7 @@ A language model built from scratch.
   - [Rotary Positional Embedding](#rotary-positional-embedding)
   - [Softmax](#softmax)
   - [Scaled Dot-Product Attention](#scaled-dot-product-attention)
+  - [Causal Multi-Head Self-Attention](#causal-multi-head-self-attention)
 - [Resources](#resources)
 
 ## Usage
@@ -412,6 +413,42 @@ The same computation runs independently for any number of leading dimensions, su
 **Scaling.** A dot product sums $d_k$ products, so its variance grows with $d_k$. With large vectors the scores become large, softmax puts almost all the weight on a single key, and its gradients almost vanish, which stalls learning. Dividing by $\sqrt{d_k}$ brings the variance of the scores back to about `1`.
 
 **Masking.** An optional boolean mask of shape `(n, m)` decides which keys each query may attend to. Where the mask is `False`, the score is replaced by $-\infty$ before the softmax, so that key receives a weight of exactly `0`. A language model uses this to stop each token from seeing the tokens after it.
+
+### Causal Multi-Head Self-Attention
+
+In self-attention, the queries, keys, and values all come from the same sequence: each token vector $x$ is projected by three learned linear layers into its own query, key, and value. The tokens of a sequence therefore attend to each other.
+
+$$Q = xW_Q^T \qquad K = xW_K^T \qquad V = xW_V^T$$
+
+**Multiple heads.** A single attention gives each token one weighted average, one way of looking at the sequence. But a token usually needs several kinds of information at once: the previous word, the subject of the sentence, a matching quote or bracket. Multi-head attention splits each `d_model` vector into $h$ smaller *heads* of size $d_k = d_{model} / h$, and runs attention in each head independently, so each can learn its own pattern. The outputs of the heads are concatenated back to `d_model` and mixed by one more linear layer $W_O$:
+
+$$\text{MultiHead}(x) = W_O \, \text{Concat}(\text{head}_1, \dots, \text{head}_h) \qquad \text{head}_i = \text{Attention}(Q_i, K_i, V_i)$$
+
+```
+x:                   (batch, seq_len, d_model)
+Q, K, V:             (batch, seq_len, d_model)
+split into heads:    (batch, h, seq_len, d_k)
+attention per head:  (batch, h, seq_len, d_k)
+concatenate heads:   (batch, seq_len, d_model)
+W_O:                 (batch, seq_len, d_model)
+```
+
+Since $h \cdot d_k = d_{model}$, the cost is about the same as a single head of size `d_model`, but the model gets $h$ independent attention patterns.
+
+**Position.** RoPE is applied to the queries and keys of every head, with the same rotation in each, right before the attention scores are computed. The values are not rotated: position should influence which tokens attend to which, not the information they pass on.
+
+**Causality.** A language model is trained to predict the next token at every position. If a token could attend to the tokens after it, it could read the answer instead of predicting it. A causal mask allows token $i$ to attend only to tokens $0, \dots, i$:
+
+```
+         keys
+         0  1  2  3
+query 0  ✓  ✗  ✗  ✗
+query 1  ✓  ✓  ✗  ✗
+query 2  ✓  ✓  ✓  ✗
+query 3  ✓  ✓  ✓  ✓
+```
+
+Changing a token therefore never changes the outputs at earlier positions. This is what allows one sequence of $n$ tokens to provide $n$ next-token predictions in a single forward pass during training.
 
 ## Resources
 

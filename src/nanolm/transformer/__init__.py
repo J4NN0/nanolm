@@ -1,4 +1,4 @@
-from nanolm.transformer.attention import scaled_dot_product_attention
+from nanolm.transformer.attention import CausalMultiHeadSelfAttention, scaled_dot_product_attention
 from nanolm.transformer.embedding import Embedding
 from nanolm.transformer.linear import Linear
 from nanolm.transformer.rmsnorm import RMSNorm
@@ -7,6 +7,7 @@ from nanolm.transformer.softmax import softmax
 from nanolm.transformer.swiglu import SwiGLU, silu
 
 __all__ = [
+    "CausalMultiHeadSelfAttention",
     "Embedding",
     "Linear",
     "RMSNorm",
