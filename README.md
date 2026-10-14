@@ -13,6 +13,7 @@ A language model built from scratch.
 - [Transformer](#transformer)
   - [Linear Module](#linear-module)
   - [Embedding Module](#embedding-module)
+  - [Root Mean Square Layer Normalization](#root-mean-square-layer-normalization)
 - [Resources](#resources)
 
 ## Usage
@@ -258,6 +259,29 @@ output:    (batch, seq_len, d_model)
 During training, tokens used in similar contexts get pushed toward similar vectors, so the embedding space ends up encoding meaning: related words lie close together.
 
 The embedding weights start as random numbers centered on zero, with standard deviation `1`. Values beyond `−3` and `3` are excluded. Unlike a linear layer, an embedding lookup returns one stored vector without summing many inputs, so its standard deviation is not scaled by the layer’s dimensions.
+
+### Root Mean Square Layer Normalization
+
+As token vectors flow through a deep stack of blocks, their scale drifts: some grow very large, others shrink toward zero. Layers then receive inputs at unpredictable scales, and training becomes unstable. Normalization fixes this by rescaling each token vector to a consistent size before it enters attention or the feed-forward network.
+
+Root Mean Square Layer Normalization (RMSNorm) divides each token vector $a$ of size `d_model` by its root mean square, then multiplies it by a learned gain $g$:
+
+$$\text{RMS}(a) = \sqrt{\frac{1}{d_{model}} \sum_{i=1}^{d_{model}} a_i^2 + \varepsilon} \qquad \text{RMSNorm}(a_i) = \frac{a_i}{\text{RMS}(a)} \, g_i$$
+
+For example, with $\varepsilon$ ignored:
+
+```
+a      = [3, -4, 0, 12]
+RMS(a) = sqrt((9 + 16 + 0 + 144) / 4) = 6.5
+a/RMS  = [0.46, -0.62, 0, 1.85]   (RMS = 1)
+```
+
+The direction of the vector is preserved, only its overall size changes. Each token is normalized on its own, using only its own `d_model` values.
+
+- **Gain $g$**: one learned value per dimension, initialized to `1`. It lets the model scale individual dimensions back up or down where that helps.
+- **Epsilon $\varepsilon$**: a small constant (`1e-5`) that avoids dividing by zero when a vector is all zeros.
+
+RMSNorm is a simplification of LayerNorm, which also subtracts the mean of the vector and adds a learned bias. Dropping these steps reaches about the same quality with less computation, which is why modern LLMs such as LLaMA use RMSNorm.
 
 ## Resources
 
