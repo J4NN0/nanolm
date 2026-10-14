@@ -14,6 +14,7 @@ A language model built from scratch.
   - [Linear Module](#linear-module)
   - [Embedding Module](#embedding-module)
   - [Root Mean Square Layer Normalization](#root-mean-square-layer-normalization)
+  - [SwiGLU Feed-Forward Network](#swiglu-feed-forward-network)
 - [Resources](#resources)
 
 ## Usage
@@ -266,7 +267,7 @@ As token vectors flow through a deep stack of blocks, their scale drifts: some g
 
 Root Mean Square Layer Normalization (RMSNorm) divides each token vector $a$ of size `d_model` by its root mean square, then multiplies it by a learned gain $g$:
 
-$$\text{RMS}(a) = \sqrt{\frac{1}{d_{model}} \sum_{i=1}^{d_{model}} a_i^2 + \varepsilon} \qquad \text{RMSNorm}(a_i) = \frac{a_i}{\text{RMS}(a)} \, g_i$$
+$$\text{RMSNorm}(a_i) = \frac{a_i}{\text{RMS}(a)} \, g_i  \qquad  \text{RMS}(a) = \sqrt{\frac{1}{d_{model}} \sum_{i=1}^{d_{model}} a_i^2 + \varepsilon}$$
 
 For example, with $\varepsilon$ ignored:
 
@@ -282,6 +283,45 @@ The direction of the vector is preserved, only its overall size changes. Each to
 - **Epsilon $\varepsilon$**: a small constant (`1e-5`) that avoids dividing by zero when a vector is all zeros.
 
 RMSNorm is a simplification of LayerNorm, which also subtracts the mean of the vector and adds a learned bias. Dropping these steps reaches about the same quality with less computation, which is why modern LLMs such as LLaMA use RMSNorm.
+
+### SwiGLU Feed-Forward Network
+
+Inside each block, attention lets tokens exchange information with each other. The feed-forward network (FFN) then processes every token on its own: it expands the token vector from `d_model` to a larger size `d_ff`, applies a nonlinearity, and projects it back to `d_model`. The wider intermediate space gives the model room to compute, and a large share of what the model learns is stored in these weights.
+
+The nonlinearity is essential. Without it, the expansion and the projection would collapse into a single linear layer, since $W_2(W_1x) = (W_2W_1)x$, and stacking blocks would add no expressive power.
+
+**SiLU.** The activation function is SiLU (also called Swish):
+
+$$\text{SiLU}(x) = x \cdot \sigma(x) = \frac{x}{1 + e^{-x}}$$
+
+Like ReLU, it is close to $x$ for large positive inputs and close to $0$ for large negative ones, but it is smooth around zero, which gives better-behaved gradients.
+
+```
+x       = [-4,    -1,    0,  1,    4   ]
+SiLU(x) = [-0.07, -0.27, 0,  0.73, 3.93]
+```
+
+**Gating.** A gated linear unit (GLU) projects the input twice. One projection goes through the activation and acts as a gate, deciding value by value how much of the other projection passes through:
+
+$$\text{FFN}(x) = W_2\big(\text{SiLU}(W_1x) \odot W_3x\big)$$
+
+where $\odot$ is element-wise multiplication. $W_1$ and $W_3$ have shape `(d_ff, d_model)`, and $W_2$ has shape `(d_model, d_ff)`:
+
+```
+x:                (batch, seq_len, d_model)
+SiLU(W1 x), W3 x: (batch, seq_len, d_ff)
+gate * value:     (batch, seq_len, d_ff)
+W2 (...):         (batch, seq_len, d_model)
+```
+
+Because the gate is computed from the input itself, the network can switch features on and off depending on the token, which in practice trains to better quality than a plain activation. The combination of SiLU and GLU is called SwiGLU, and it is used by LLaMA, PaLM, and most modern LLMs.
+
+**Size.** A classic FFN has two matrices and uses $d_{ff} = 4 \cdot d_{model}$. SwiGLU has three, so $d_{ff}$ is set to about $\frac{8}{3} \cdot d_{model}$ to keep the parameter count roughly the same, rounded to a multiple of 64 for efficient hardware use. For $d_{model} = 512$:
+
+```
+classic: 2 × 512 × 2048 = 2,097,152 parameters
+SwiGLU:  3 × 512 × 1344 = 2,064,384 parameters
+```
 
 ## Resources
 
