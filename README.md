@@ -17,6 +17,7 @@ A language model built from scratch.
   - [SwiGLU Feed-Forward Network](#swiglu-feed-forward-network)
   - [Rotary Positional Embedding](#rotary-positional-embedding)
   - [Softmax](#softmax)
+  - [Scaled Dot-Product Attention](#scaled-dot-product-attention)
 - [Resources](#resources)
 
 ## Usage
@@ -381,6 +382,36 @@ naive        = [nan,  nan,  nan ]
 x - max(x)   = [-2,   -1,   0   ]
 softmax(x)   = [0.09, 0.24, 0.67]
 ```
+
+### Scaled Dot-Product Attention
+
+Attention is how tokens exchange information. The meaning of a token often depends on others: in `the animal didn't cross the street because it was tired`, the model needs to know that `it` refers to `animal`. Attention lets each token look at the other tokens and pull in what is relevant.
+
+Each token is given three vectors, computed from its embedding by linear layers:
+
+- **Query** $q$: what the token is looking for.
+- **Key** $k$: what the token offers, used to decide whether it matches a query.
+- **Value** $v$: the information the token passes on when it is attended to.
+
+Each query is compared with every key, the comparisons are turned into weights, and the result is the weighted average of the values:
+
+$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+
+Step by step, for $n$ queries and $m$ keys:
+
+```
+Q K^T / sqrt(d_k):  (n, d_k) @ (d_k, m) -> (n, m)    how well each query matches each key
+softmax over keys:  (n, m)                           each row sums to 1
+@ V:                (n, m) @ (m, d_v)   -> (n, d_v)  one blended value per query
+```
+
+For example, if a query's scores against three keys are `[2, 1, 0]`, its weights are `[0.67, 0.24, 0.09]`, and its output is `0.67 v0 + 0.24 v1 + 0.09 v2`: mostly the first token's information, with a little of the others.
+
+The same computation runs independently for any number of leading dimensions, such as the batch and, later, the attention heads.
+
+**Scaling.** A dot product sums $d_k$ products, so its variance grows with $d_k$. With large vectors the scores become large, softmax puts almost all the weight on a single key, and its gradients almost vanish, which stalls learning. Dividing by $\sqrt{d_k}$ brings the variance of the scores back to about `1`.
+
+**Masking.** An optional boolean mask of shape `(n, m)` decides which keys each query may attend to. Where the mask is `False`, the score is replaced by $-\infty$ before the softmax, so that key receives a weight of exactly `0`. A language model uses this to stop each token from seeing the tokens after it.
 
 ## Resources
 
