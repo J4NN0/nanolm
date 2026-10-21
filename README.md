@@ -258,7 +258,7 @@ cProfile only observes the main process, so with more than one process the pre-t
 
 The tokenizer gives us token IDs, but a Transformer language model needs vectors it can work with. An embedding turns each ID into a vector. Transformer blocks then let tokens draw on earlier tokens and process what they find. Finally, a linear layer produces a score (a *logit*) for each possible next token. The diagram shows this path.
 
-![transformer.png](docs/transformer.png)
+<img src="docs/transformer.png" alt="transformer.png" width="400">
 
 ### Embedding Module
 
