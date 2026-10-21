@@ -19,6 +19,11 @@ A language model built from scratch.
   - [Softmax](#softmax)
   - [Scaled Dot-Product Attention](#scaled-dot-product-attention)
   - [Causal Multi-Head Self-Attention](#causal-multi-head-self-attention)
+- [Training](#training)
+  - [Cross-Entropy Loss](#cross-entropy-loss)
+  - [AdamW Optimizer](#adamw-optimizer)
+  - [Learning Rate Schedule](#learning-rate-schedule)
+  - [Gradient Clipping](#gradient-clipping)
 - [Resources](#resources)
 
 ## Usage
@@ -436,6 +441,167 @@ query 3  ✓  ✓  ✓  ✓
 ```
 
 So changing a later token cannot change an earlier output. During training, one sequence of $n$ tokens can provide $n$ next-token predictions in a single pass.
+
+## Training
+
+The model starts with random weights, so its predictions are random too. Training improves them by repeating one step over many batches of text (a batch is a group of short snippets of training text, each a few hundred tokens long, taken from random places in the dataset):
+1. The model outputs next-token scores at every position.
+2. A *loss* function measures the error, i.e., how wrong the next-token predictions are.
+3. For every weight, the *gradient* tells which way to move it to lower the loss.
+4. The *optimizer* moves every weight a small step in that direction.
+5. The *learning rate* schedule and *gradient clipping* control how large those moves are.
+
+The sections below cover the loss, the optimizer, and two ways of controlling how big each step is: the learning rate schedule and gradient clipping.
+
+### Cross-Entropy Loss
+
+At every position, the model outputs one score per vocabulary token, and softmax turns those scores into probabilities. The training text tells us the correct next token. Cross-entropy looks only at the probability the model gave to that token and takes its negative log:
+
+$$\text{loss} = -\log p(\text{correct token})$$
+
+For instance, for the text `"the cat sat on the"` the correct next token is `"mat"`:
+
+```
+p("mat") = 0.9  -> loss 0.11   (good)
+p("mat") = 0.5  -> loss 0.69
+p("mat") = 0.01 -> loss 4.61   (bad)
+```
+
+The loss is `0` only when the model is certain of the correct token, and it grows quickly when the model is confident in a wrong one. A batch has thousands of positions, so their losses are averaged into the single number that training tries to push down.
+
+For example, take a small batch of 2 snippets with 4 tokens each, so 8 positions. Each snippet is a row and each column is a position. The target at each position is simply the token that comes next in the text:
+
+```
+               position 0   position 1   position 2   position 3
+snippet 1
+  input        the          cat          sat          on
+  target       cat          sat          on           the
+
+snippet 2
+  input        once         upon         a            time
+  target       upon         a            time         there
+```
+
+At each position, the model has read the tokens up to that point and gives a probability to every token in the vocabulary. Only the probability of the correct target is kept. The values below are examples of what a partly trained model might output:
+
+```
+snippet 1
+  position 0   read "the"                -> p("cat")   = 0.05
+  position 1   read "the cat"            -> p("sat")   = 0.30
+  position 2   read "the cat sat"        -> p("on")    = 0.60
+  position 3   read "the cat sat on"     -> p("the")   = 0.80
+
+snippet 2
+  position 0   read "once"               -> p("upon")  = 0.40
+  position 1   read "once upon"          -> p("a")     = 0.90
+  position 2   read "once upon a"        -> p("time")  = 0.95
+  position 3   read "once upon a time"   -> p("there") = 0.20
+```
+
+Each probability becomes $-\log p$, for example $-\log 0.05 = 3.00$. The losses form a grid with the same shape as the batch:
+
+```
+             pos 0   pos 1   pos 2   pos 3
+snippet 1    3.00    1.20    0.51    0.22
+snippet 2    0.92    0.11    0.05    1.61
+```
+
+All 8 losses are averaged:
+
+```
+(3.00 + 1.20 + 0.51 + 0.22 + 0.92 + 0.11 + 0.05 + 1.61) / 8 = 7.62 / 8 = 0.95
+```
+
+`0.95` is the loss of this batch, and one training step is taken to lower it. The grid also shows why positions differ:
+
+- **Little context, high loss.** After reading only `"the"`, almost any noun could follow, so the model gives `"cat"` just `0.05`, and that position costs `3.00`.
+- **Predictable text, low loss.** After `"once upon a"`, `"time"` is nearly certain (`0.95`), so it costs only `0.05`.
+- **Genuinely open text.** After `"once upon a time"`, many words could follow, so even a good model loses something there (`1.61`).
+
+The average counts every position equally, and lowering it improves all 8 predictions together. The next step draws a new random batch with its own average. Since some batches contain harder text than others, the loss goes up and down from step to step even while the model improves; what matters is the trend over many steps.
+
+If a model assigns equal probability to every token in a vocabulary of size $V$, each token has probability $1/V$. Since the loss is the negative $\log$ of the correct token's probability, the loss is $-\log(1/V)=\log V$. In practice, loss is calculated directly from the model's raw scores (logits) to avoid numerical errors. Very small probabilities can round to zero, making $\log 0$ undefined. Subtracting the largest logit before exponentiation keeps the calculation numerically stable without changing the result.
+
+To give the loss an intuitive reading, we define *Perplexity* as $e^{\text{loss}}$, which undoes the $\log$ and turns the loss back into a number of tokens: a model with perplexity $N$ is as unsure as one that chooses evenly among $N$ tokens at every position. With a 10,000-token vocabulary:
+
+```
+loss 9.2  -> perplexity ≈ 10,000   as unsure as guessing blindly from the whole vocabulary
+loss 4.0  -> perplexity ≈ 55       as unsure as choosing among 55 tokens
+loss 1.5  -> perplexity ≈ 4.5      as unsure as choosing among 4 or 5 tokens
+loss 0    -> perplexity = 1        always certain of the correct token
+```
+
+Loss and perplexity carry the same information on different scales. Training lowers the loss; perplexity makes its value easier to read and is often used to compare models. It is computed from the loss averaged over all positions.
+
+### AdamW Optimizer
+
+From the loss, the model computes a gradient for every weight: how much the loss would rise if that weight were nudged up slightly. Its sign says which way to move the weight:
+
+```
+weight w:  gradient +2.0  -> raising w raises the loss -> lower w
+weight u:  gradient -0.5  -> raising u lowers the loss -> raise u
+```
+
+The gradient does not say how far to move. The simplest optimizer takes a small step against it, scaled by the *learning rate* $\alpha$ (for example `0.001`):
+
+```
+new weight = weight - α × gradient
+```
+
+This works, but has two problems:
+
+1. **Noise.** Each batch is a small sample of the text, so its gradient points in a slightly different direction from the next batch's.
+2. **Scale.** Some weights always get large gradients and others tiny ones, so a single learning rate is too big for some and too small for others.
+
+Adam fixes both by keeping two running averages for every weight:
+
+- `m` averages recent gradients (roughly the last 10 steps). Batch noise mostly cancels out, leaving the direction they agree on.
+- `v` averages recent squared gradients (roughly the last 1,000 steps). It measures how large this weight's gradients usually are.
+
+The step is $\alpha \cdot m / \sqrt{v}$. Dividing by $\sqrt{v}$ removes each weight's usual gradient size, so every weight moves by about $\alpha$ per step:
+
+```
+weight A: gradients around 100   -> m ≈ 100,  √v ≈ 100   -> step ≈ α
+weight B: gradients around 0.01  -> m ≈ 0.01, √v ≈ 0.01  -> step ≈ α
+```
+
+Both averages start at `0`, so during the first steps they are too small. Adam scales them up by an amount that fades away as training continues.
+
+The "W" in AdamW is *weight decay*: every step, each weight also shrinks towards zero by a small fixed fraction ($\alpha \cdot \lambda$, for example `0.001 × 0.01`). Weights therefore stay small unless the loss really needs them large, which usually helps the model on text it has not seen. Earlier versions of Adam mixed this shrinking into the gradient, where the division by $\sqrt{v}$ weakened it for weights with large gradients; AdamW keeps it separate so every weight shrinks by the same fraction.
+
+Keeping `m` and `v` for every weight means the optimizer uses twice as much memory as the weights themselves.
+
+### Learning Rate Schedule
+
+The learning rate $\alpha$ sets the size of every step, and the best size changes during training. At the start, the weights are random and Adam's averages are unreliable, so large steps can push the model in a bad direction. Near the end, small steps let it settle on a good solution.
+
+A *cosine schedule with warm-up* changes $\alpha$ at every step in three phases:
+
+1. **Warm-up:** grow evenly from `0` to a maximum, over the first $T_w$ steps.
+2. **Cosine decay:** lower it to a minimum by step $T_c$, along half a cosine wave: slowly at first, faster in the middle, and slowly again near the end.
+3. **After $T_c$:** stay at the minimum.
+
+```
+max = 1.0, min = 0.1, T_w = 10, T_c = 100
+
+step:           0    5    10   55    100   150
+learning rate:  0    0.5  1.0  0.55  0.1   0.1
+```
+
+### Gradient Clipping
+
+Occasionally an unusual batch produces a very large gradient, and one step along it can undo much of what the model has learned. Gradient clipping limits how large the gradient can be.
+
+It measures the size of all the gradients together, as the length of one long vector made from every weight's gradient. If that length is above a maximum, every gradient is scaled down by the same factor so the length equals the maximum. Otherwise the gradients are left unchanged.
+
+```
+maximum length = 1.0
+
+gradients [3, 4]      length 5.0  -> scaled by 1/5 -> [0.6, 0.8]   length 1.0
+gradients [0.3, 0.4]  length 0.5  -> unchanged
+```
+
+Because every gradient is scaled by the same factor, the step gets shorter but keeps its direction.
 
 ## Resources
 
