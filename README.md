@@ -19,11 +19,16 @@ A language model built from scratch.
   - [Softmax](#softmax)
   - [Scaled Dot-Product Attention](#scaled-dot-product-attention)
   - [Causal Multi-Head Self-Attention](#causal-multi-head-self-attention)
+  - [Transformer Block](#transformer-block)
+  - [Transformer Language Model](#transformer-language-model)
 - [Training](#training)
   - [Cross-Entropy Loss](#cross-entropy-loss)
   - [AdamW Optimizer](#adamw-optimizer)
   - [Learning Rate Schedule](#learning-rate-schedule)
   - [Gradient Clipping](#gradient-clipping)
+  - [Data Loading](#data-loading)
+  - [Checkpointing](#checkpointing)
+  - [Training Loop](#training-loop)
 - [Resources](#resources)
 
 ## Usage
@@ -217,7 +222,7 @@ cProfile only observes the main process, so with more than one process the pre-t
 
 ## Transformer
 
-The tokenizer gives us token IDs, but a Transformer language model needs vectors it can work with. An embedding turns each ID into a vector. Transformer blocks then let tokens draw on earlier tokens and process what they find. Finally, a linear layer produces a score (a *logit*) for each possible next token. The diagram shows this path. This repository currently implements the components below individually; it does not yet assemble the full model.
+The tokenizer gives us token IDs, but a Transformer language model needs vectors it can work with. An embedding turns each ID into a vector. Transformer blocks then let tokens draw on earlier tokens and process what they find. Finally, a linear layer produces a score (a *logit*) for each possible next token. The diagram shows this path.
 
 ![transformer.png](docs/transformer.png)
 
@@ -442,6 +447,39 @@ query 3  ✓  ✓  ✓  ✓
 
 So changing a later token cannot change an earlier output. During training, one sequence of $n$ tokens can provide $n$ next-token predictions in a single pass.
 
+### Transformer Block
+
+A Transformer block combines attention and the SwiGLU feed-forward network. Attention lets each token gather information from earlier tokens; the feed-forward network then processes each token's vector on its own. Each of the two reads a normalized copy of the token vectors and adds its output back to them:
+
+```
+x = x + attention(RMSNorm(x))
+x = x + SwiGLU(RMSNorm(x))
+```
+
+Adding the output back, rather than replacing `x`, is called a *residual connection*. Each part only has to learn a change to the vectors instead of rebuilding them, and during training the gradient can flow straight back through the additions to the first blocks. Normalizing the copy before each part (*pre-norm*) gives attention and SwiGLU inputs of a steady scale, however large `x` itself grows.
+
+### Transformer Language Model
+
+The full model chains the pieces in the order of the diagram:
+
+```
+token IDs                  (batch, seq_len)
+embedding                  (batch, seq_len, d_model)
+num_layers blocks          (batch, seq_len, d_model)
+RMSNorm                    (batch, seq_len, d_model)
+linear                     (batch, seq_len, vocab_size)   one logit per vocabulary token
+```
+
+The blocks keep adding to the same vectors, so the final RMSNorm brings them back to a steady scale before the last linear layer turns each one into logits. The *context length* is the longest sequence the model accepts, and RoPE prepares its rotations for exactly that many positions.
+
+With a vocabulary of 10,000 tokens, `d_model = 512`, 4 blocks, 16 heads, and a SwiGLU hidden size of 1,344, the model has about 22.7 million weights:
+
+```
+embedding      10,000 × 512                                5.1 M
+4 blocks       4 × (attention 1.0 M + SwiGLU 2.1 M)       12.4 M
+output layer   512 × 10,000                                5.1 M
+```
+
 ## Training
 
 The model starts with random weights, so its predictions are random too. Training improves them by repeating one step over many batches of text (a batch is a group of short snippets of training text, each a few hundred tokens long, taken from random places in the dataset):
@@ -451,7 +489,7 @@ The model starts with random weights, so its predictions are random too. Trainin
 4. The *optimizer* moves every weight a small step in that direction.
 5. The *learning rate* schedule and *gradient clipping* control how large those moves are.
 
-The sections below cover the loss, the optimizer, and two ways of controlling how big each step is: the learning rate schedule and gradient clipping.
+The sections below cover the loss, the optimizer, and two ways of controlling how big each step is: the learning rate schedule and gradient clipping. The last three sections cover how batches are drawn from the dataset, how training is saved and resumed, and how all of it runs together.
 
 ### Cross-Entropy Loss
 
@@ -602,6 +640,61 @@ gradients [0.3, 0.4]  length 0.5  -> unchanged
 ```
 
 Because every gradient is scaled by the same factor, the step gets shorter but keeps its direction.
+
+### Data Loading
+
+Before training, the whole dataset is tokenized once and stored as one long list of token IDs. Document boundaries are marked by a special token such as `<|endoftext|>`, so the list needs no other structure.
+
+A batch is made by picking `batch_size` random start positions in that list and cutting `context_length` tokens from each one. The targets are the same snippet shifted one token to the right, so at every position the target is the token that comes next:
+
+```
+token IDs:  ...  12   845   31   907   2   ...
+                 ^ start, context_length = 4
+
+input:           12   845   31   907
+target:          845  31    907  2
+```
+
+The last input token still needs a target, so every snippet uses `context_length + 1` tokens, and a start can be at most `context_length + 1` tokens before the end of the list. Random starts mean every step sees a different mix of text, and over many steps every part of the dataset is used.
+
+Datasets can be larger than the available memory: the OpenWebText sample is about 11 GB of text. The token file is therefore *memory-mapped*: the program uses it as if it were an array in memory, but the operating system reads from disk only the parts that are accessed, i.e., the snippets of each batch.
+
+### Checkpointing
+
+Training can take hours, and an interruption would lose all the progress. A *checkpoint* is a file with everything needed to continue as if training had never stopped:
+
+- the model's weights;
+- the optimizer's state: `m` and `v` for every weight, and the number of steps already taken;
+- the iteration number, which also sets where the learning rate schedule continues.
+
+The weights alone are enough to use the trained model, but not to continue training it. Without the optimizer state, `m` and `v` would restart from zero and Adam would take its first, unreliable steps again; without the iteration number, the schedule would restart its warm-up from a learning rate of `0`.
+
+### Training Loop
+
+The training loop repeats one step, combining every piece above:
+
+1. Set the learning rate for this step from the schedule.
+2. Draw a random batch of inputs and targets.
+3. Compute the logits and the cross-entropy loss.
+4. Compute the gradient of every weight. Gradients from the previous step are cleared first, otherwise the new ones would be added to them.
+5. Clip the gradients.
+6. Let AdamW update every weight.
+
+At regular intervals the loop also prints the training loss, measures the *validation loss*, and saves a checkpoint.
+
+The validation loss is measured on text the model never trains on. The training loss can keep falling just because the model memorizes its training text; the validation loss shows how well it predicts new text. If the training loss keeps falling while the validation loss rises, the model is memorizing (*overfitting*). The validation loss is averaged over several batches, so it is less noisy than the training loss of a single batch, and it needs no gradients, since no weight is updated.
+
+For example, with every byte used as its own token (a vocabulary of 256, so a random model starts at $\log 256 \approx 5.55$), a small model with 470,000 weights trained on TinyStories for 300 steps:
+
+```
+step 50/300  | train loss 2.1345 | lr 2.96e-03
+step 150/300 | train loss 1.5277 | lr 1.82e-03
+step 150/300 | validation loss 1.5142
+step 300/300 | train loss 1.3788 | lr 1.00e-04
+step 300/300 | validation loss 1.3544
+```
+
+The validation loss stays close to the training loss, so the model is learning patterns of the language rather than memorizing the training text.
 
 ## Resources
 

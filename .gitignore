@@ -226,3 +226,6 @@ profiles/
 
 # Trained tokenizers
 tokenizers/
+
+# Training checkpoints
+checkpoints/
