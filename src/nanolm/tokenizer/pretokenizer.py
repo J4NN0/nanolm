@@ -142,3 +142,20 @@ class Pretokenizer:
                 occ[token] = occ.get(token, 0) + 1
 
         return occ
+
+    def split_text(self, text: str) -> list[str]:
+        # Unlike _pretokenize, keeps the pre-tokens in order and keeps each special token as its own pre-token
+        if self.special_pattern is not None:
+            segments = re.split(f"({self.special_pattern})", text)
+        else:
+            segments = [text]
+
+        pretokens: list[str] = []
+        for segment in segments:
+            if segment in self.special_tokens:
+                pretokens.append(segment)
+                continue
+            for match in re.finditer(PAT, segment):
+                pretokens.append(match.group())
+
+        return pretokens

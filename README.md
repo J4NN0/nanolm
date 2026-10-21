@@ -9,6 +9,7 @@ A language model built from scratch.
 - [BPE Tokenizer](#bpe-tokenizer)
   - [Pre-tokenization](#pre-tokenization)
   - [BPE Training](#bpe-training)
+  - [Encoding](#encoding)
   - [Optimizations](#optimizations)
 - [Transformer](#transformer)
   - [Embedding Module](#embedding-module)
@@ -175,6 +176,39 @@ words = {
 On the next iteration, the pairs are `(b"ca", b"t")` with count `2` and `(b"ca", b"r")` with count `1`, so it would learn `b"cat"` next. 
 
 This repeats until the requested final vocabulary size is reached, or there are no pairs left to merge. If two pairs have the same frequency, the code deterministically chooses the lexicographically greater byte pair.
+
+### Encoding
+
+Training the tokenizer produces a vocabulary and an ordered list of merges which can be used to turn new text into token IDs. The language model only reads token IDs, so the training and validation text are encoded once before the model is trained, and a prompt is encoded before the model can continue it.
+
+Encoding repeats the steps of training on the new text, but instead of choosing merges it replays the learned ones. Imagine these merges were learned, in this order:
+
+```
+merge 1:  t - h   -> th    ID 256
+merge 2:  th - e  -> the   ID 257
+merge 3:  ␣ - c   -> ␣c    ID 258
+```
+
+Encoding `"the cat"` takes four steps:
+
+1. Pre-tokenize with the same pattern used in training: `"the"` and `"␣cat"`. As in training, merges never cross from one pre-token to the next.
+2. Split each pre-token into bytes: `t - h - e` and `␣ - c - a - t`.
+3. Apply the merges in the order they were learned. In each pre-token, the pair that was learned earliest is merged first, until no learned pair is left:
+    ```
+    t - h - e       -> merge 1 -> th - e      -> merge 2 -> the
+    ␣ - c - a - t   -> merge 3 -> ␣c - a - t  -> no learned pair left
+    ```
+    The order matters: `the` can only form once `th` exists, just as in training.
+4. Look up the ID of every resulting token in the vocabulary:
+    ```
+    "the" -> 257    "␣c" -> 258    "a" -> 97    "t" -> 116
+
+    "the cat" -> [257, 258, 97, 116]
+    ```
+
+Special tokens such as `<|endoftext|>` are found before pre-tokenization. They are never split and become their own single ID.
+
+A pre-token always encodes to the same IDs, wherever it appears. Each distinct pre-token is therefore encoded once and its IDs are remembered, so frequent words such as `"␣the"` cost a single lookup after their first occurrence.
 
 ### Optimizations
 
