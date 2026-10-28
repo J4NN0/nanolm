@@ -35,6 +35,7 @@ A language model built from scratch.
   - [Sampling](#sampling)
   - [Temperature](#temperature)
   - [Top-p Sampling](#top-p-sampling)
+- [Putting It Together](#putting-it-together)
 - [Resources](#resources)
 
 ## Usage
@@ -49,7 +50,12 @@ Run the project:
 uv run python -m nanolm
 ```
 
-This trains a BPE tokenizer and prints its merges. The dataset, vocabulary size, and special tokens are set at the top of `src/nanolm/__main__.py`. The tokenizer is saved to `tokenizers/<dataset>_<vocab size>.json` and loaded on later runs; delete the file to retrain.
+This runs every stage on TinyStories (see [Datasets](#datasets) to download it):
+
+1. Train a BPE tokenizer with a vocabulary of 10,000 tokens (saved to `tokenizers/<dataset>_<vocab size>.json`).
+2. Encode the training and validation text into token IDs (saved to `data/<dataset>-train_<vocab size>.bin` and `data/<dataset>-valid_<vocab size>.bin`).
+3. Train the language model, printing the training and validation loss and saving checkpoints (to `checkpoints/<dataset>_<vocab size>.pt`).
+4. Generate a short story from the trained model.
 
 ## Datasets
 
@@ -214,6 +220,8 @@ Encoding `"the cat"` takes four steps:
 Special tokens such as `<|endoftext|>` are found before pre-tokenization. They are never split and become their own single ID.
 
 A pre-token always encodes to the same IDs, wherever it appears. Each distinct pre-token is therefore encoded once and its IDs are remembered, so frequent words such as `"␣the"` cost a single lookup after their first occurrence.
+
+A whole dataset is too large to encode in one go. The TinyStories training text is 2.2 GB and becomes about half a billion token IDs, and kept in memory as a list of Python numbers they would take tens of gigabytes. The file is therefore split into pieces of about 50 MB, each ending at an `<|endoftext|>` token, so no word is cut in two. The pieces are encoded in parallel, and the IDs of each piece are written to disk in file order as 2-byte numbers, which hold any ID up to 65,535. Only a few pieces are in memory at any time, and the resulting file is about 1 GB.
 
 ### Decoding
 
@@ -805,6 +813,19 @@ temperature 0.01              Once upon a time, there was a little girl named Li
 ```
 
 With the full distribution the model sometimes picks unlikely tokens and produces broken words such as `"lo tree"`. Nearly greedy decoding repeats itself. A lower temperature combined with top-p gives the most fluent text.
+
+## Putting It Together
+
+Running the project goes from raw text to a model that writes stories, in four stages:
+
+1. The tokenizer learns 10,000 tokens from the training text, with `<|endoftext|>` as a special token that marks where one story ends and the next begins (see [BPE Training](#bpe-training)).
+2. The training and validation text are each converted once, ahead of time, and never have to be tokenized again (see [Encoding](#encoding)). The training text is what the model learns from; the validation text is only used to check how well the model predicts text it has never seen.
+3. The training loop draws random batches from the token IDs, measures the loss, and updates the weights, while printing the training and validation loss and saving checkpoints (see [Training Loop](#training-loop)).
+4. The trained weights are loaded, the model continues `"Once upon a time"` with a temperature of `0.7` and top-p of `0.9`, and the new tokens are decoded back into text (see [Text Generation](#text-generation)).
+
+Every stage saves its result to a file, and a stage whose file already exists is skipped. Running the project again is therefore cheap, and an interrupted run continues where it stopped: training resumes from its last checkpoint.
+
+On an Apple M5 laptop with the default settings, the first two stages take about a minute: 26 seconds to train the tokenizer on 2.2 GB of text, and 42 seconds to encode it into 541 million token IDs. Training is by far the longest stage. Each step takes about 0.8 seconds, so 5,000 steps of 32 snippets of 256 tokens, about 41 million tokens in total, take a little over an hour.
 
 ## Resources
 

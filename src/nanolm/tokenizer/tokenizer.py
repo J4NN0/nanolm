@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import json
 import os
+from multiprocessing import Pool
+
+import numpy as np
+
 from nanolm.tokenizer.pair_index import Pair, PairIndex
 from nanolm.tokenizer.pretokenizer import UTF8_ENCODING, Pretokenizer
 
 BYTE_LEVEL_TOKENIZER_VOCAB_SIZE = 256
+
+# Token IDs are stored on disk as 2-byte integers, which fit vocabularies of up to 65,536 tokens
+TOKEN_ID_DTYPE = np.uint16
 
 # Maps each byte (0-255) to exactly one character, so tokens can be stored as JSON strings losslessly
 TOKEN_SERIALIZATION_ENCODING = "latin-1"
@@ -115,11 +122,44 @@ class Tokenizer:
         self.pretoken_cache[pretoken] = token_ids
         return token_ids
 
+    def encode_file(self, input_path: str, output_path: str, num_processes: int | None = None) -> int:
+        if len(self.vocab) > np.iinfo(TOKEN_ID_DTYPE).max + 1:
+            raise ValueError(f"Vocabulary of {len(self.vocab)} tokens does not fit in {np.dtype(TOKEN_ID_DTYPE).name}")
+
+        if num_processes is None:
+            num_processes = os.cpu_count() or 1
+
+        # Chunks of about 50 MB that end at a document separator, so no pre-token is cut in two
+        chunk_ranges = self.pretokenizer._find_chunk_ranges(input_path, num_processes)
+
+        tasks: list[tuple[str, int, int]] = []
+        for start, end in chunk_ranges:
+            tasks.append((input_path, start, end))
+
+        directory = os.path.dirname(output_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
+        # Chunks are encoded in parallel, but written in file order, one at a time,
+        # so the whole token list never has to be in memory
+        num_tokens = 0
+        with open(output_path, "wb") as f, Pool(min(num_processes, len(tasks))) as pool:
+            for chunk_token_ids in pool.imap(self._encode_chunk, tasks):
+                chunk_token_ids.tofile(f)
+                num_tokens += len(chunk_token_ids)
+        return num_tokens
+
+    def _encode_chunk(self, task: tuple[str, int, int]) -> np.ndarray:
+        input_path, start, end = task
+        chunk_text = Pretokenizer._read_chunk(input_path, start, end)
+        return np.array(self.encode(chunk_text), dtype=TOKEN_ID_DTYPE)
+
     def decode(self, token_ids: list[int]) -> str:
-        text_bytes = b""
+        # Joined once at the end: adding to a bytes object copies it every time
+        tokens: list[bytes] = []
         for token_id in token_ids:
-            text_bytes += self.vocab[token_id]
-        return text_bytes.decode(UTF8_ENCODING, errors="replace")
+            tokens.append(self.vocab[token_id])
+        return b"".join(tokens).decode(UTF8_ENCODING, errors="replace")
 
     def save(self, path: str) -> None:
         vocab: dict[str, str] = {}

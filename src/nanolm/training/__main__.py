@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import os
 import time
@@ -15,7 +17,7 @@ DEFAULT_VALID_PATH = "data/TinyStoriesV2-GPT4-valid.npy"
 DEFAULT_CHECKPOINT_PATH = "checkpoints/checkpoint.pt"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a Transformer language model on token ID files")
 
     # Data: .npy files, or raw binary files of --data-dtype token IDs
@@ -54,7 +56,8 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--device", default=None, help="e.g. cpu, cuda:0, mps (default: best available)")
     parser.add_argument("--seed", type=int, default=0)
-    return parser.parse_args()
+    # argv is None when run from the command line, so the options are read from sys.argv
+    return parser.parse_args(argv)
 
 
 def default_device() -> str:
@@ -83,8 +86,8 @@ def evaluate(model: TransformerLM, data: npt.NDArray[np.integer], args: argparse
     return total_loss / args.eval_iters
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     device = args.device or default_device()
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
