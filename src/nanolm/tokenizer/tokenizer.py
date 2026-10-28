@@ -115,6 +115,12 @@ class Tokenizer:
         self.pretoken_cache[pretoken] = token_ids
         return token_ids
 
+    def decode(self, token_ids: list[int]) -> str:
+        text_bytes = b""
+        for token_id in token_ids:
+            text_bytes += self.vocab[token_id]
+        return text_bytes.decode(UTF8_ENCODING, errors="replace")
+
     def save(self, path: str) -> None:
         vocab: dict[str, str] = {}
         for token_id, token in self.vocab.items():

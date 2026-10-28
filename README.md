@@ -10,6 +10,7 @@ A language model built from scratch.
   - [Pre-tokenization](#pre-tokenization)
   - [BPE Training](#bpe-training)
   - [Encoding](#encoding)
+  - [Decoding](#decoding)
   - [Optimizations](#optimizations)
 - [Transformer](#transformer)
   - [Embedding Module](#embedding-module)
@@ -30,6 +31,10 @@ A language model built from scratch.
   - [Data Loading](#data-loading)
   - [Checkpointing](#checkpointing)
   - [Training Loop](#training-loop)
+- [Text Generation](#text-generation)
+  - [Sampling](#sampling)
+  - [Temperature](#temperature)
+  - [Top-p Sampling](#top-p-sampling)
 - [Resources](#resources)
 
 ## Usage
@@ -209,6 +214,16 @@ Encoding `"the cat"` takes four steps:
 Special tokens such as `<|endoftext|>` are found before pre-tokenization. They are never split and become their own single ID.
 
 A pre-token always encodes to the same IDs, wherever it appears. Each distinct pre-token is therefore encoded once and its IDs are remembered, so frequent words such as `"␣the"` cost a single lookup after their first occurrence.
+
+### Decoding
+
+Decoding turns token IDs back into text, which is needed to read what the model generates. Every ID is looked up in the vocabulary, the bytes of all tokens are joined in order, and the joined bytes are read as UTF-8 text:
+
+```
+[257, 258, 97, 116] -> "the" + "␣c" + "a" + "t" -> "the cat"
+```
+
+A token can hold only part of a character: `é` is two bytes, and a merge may never have joined them. Joining all the bytes first keeps such a character whole. A sequence that is not valid UTF-8, such as one byte of `é` on its own, can still come out of the model, so it is shown as the replacement character `�` instead of stopping with an error.
 
 ### Optimizations
 
@@ -729,6 +744,67 @@ step 300/300 | validation loss 1.3544
 ```
 
 The validation loss stays close to the training loss, so the model is learning patterns of the language rather than memorizing the training text.
+
+## Text Generation
+
+A trained model predicts one token at a time, so generating text is a loop:
+
+1. Encode the prompt into token IDs.
+2. Run the model on the tokens so far. The logits at the last position score every possible next token.
+3. Turn the logits into probabilities and pick the next token from them.
+4. Append that token and repeat from step 2.
+
+The loop stops at the end-of-text token, which the model learned to produce at the end of every document, or after a maximum number of new tokens. The model accepts at most `context_length` tokens, so once the text is longer only the most recent `context_length` tokens are given to it.
+
+### Sampling
+
+The simplest choice is to always pick the most likely token (*greedy decoding*). The same text then always gives the same continuation, and it often falls into loops: once `"a big, red ball"` is the most likely phrase, it stays the most likely phrase.
+
+*Sampling* instead picks the next token at random, following the model's probabilities: a token with probability `0.6` is picked 6 times out of 10. The text varies from run to run and follows the patterns the model learned. Two settings change the probabilities before sampling: temperature and top-p.
+
+### Temperature
+
+The logits are divided by a *temperature* before softmax. With the logits `[2, 1, 0]`:
+
+```
+temperature 0.5   logits [4, 2, 0]       probabilities [0.87, 0.12, 0.02]
+temperature 1     logits [2, 1, 0]       probabilities [0.67, 0.24, 0.09]
+temperature 2     logits [1, 0.5, 0]     probabilities [0.51, 0.31, 0.19]
+```
+
+- Below `1`, the gaps between logits grow, so the likely tokens get even more probability. The text is safer and more repetitive. As the temperature gets close to `0`, sampling becomes greedy decoding.
+- At `1`, the model's probabilities are used unchanged.
+- Above `1`, the gaps shrink and the probabilities become more even. The text is more varied but makes more mistakes.
+
+### Top-p Sampling
+
+Even a good model gives a small probability to thousands of unlikely tokens. Each one is rarely picked, but together they are picked often, and a single bad token can derail the rest of the text.
+
+*Top-p sampling* (also called nucleus sampling) keeps only the most likely tokens whose probabilities add up to at least `p`, then rescales them so they sum to `1` again. With `p = 0.7`:
+
+```
+sorted probabilities   0.50   0.25   0.15   0.10
+running total          0.50   0.75   0.90   1.00
+kept                   yes    yes    no     no      (0.75 already reaches 0.7)
+rescaled               0.67   0.33   0      0
+```
+
+The number of kept tokens adapts to the model's confidence. When one token is nearly certain, it can be the only one kept; when many tokens are plausible, many are kept. With `p = 1` every token is kept.
+
+For example, a small model trained on TinyStories continuing `"Once upon a time"`:
+
+```
+temperature 1, top-p 1        Once upon a time, there was a tall tree. It was very important for a little girl,
+                              and it was very smart. The tall tree was wet from the lo tree.
+
+temperature 0.7, top-p 0.9    Once upon a time, there was a little boy named Tim. Tim loved to watch the other
+                              kids play. One day, he went for a walk in the park.
+
+temperature 0.01              Once upon a time, there was a little girl named Lily. She had a big, red ball. [...]
+                              One day, she found a big, red ball. It was a big, red ball.
+```
+
+With the full distribution the model sometimes picks unlikely tokens and produces broken words such as `"lo tree"`. Nearly greedy decoding repeats itself. A lower temperature combined with top-p gives the most fluent text.
 
 ## Resources
 
