@@ -98,7 +98,7 @@ Before deriving any BPE merges, we split the raw text into chunks called *pre-to
     
     That's 12 pre-tokens which could be collapsed to something like this:
     ```python
-    {"low": 5, "lower": 2, "newest": 3, "widest": 2}
+    pretoken_counts = {"low": 5, "lower": 2, "newest": 3, "widest": 2}
     ```
     
     This is now only 4 entries. To count the pair `l - o` we don't need to iterate trough 12 words, but just 4 and multiply:
