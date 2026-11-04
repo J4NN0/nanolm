@@ -57,9 +57,10 @@ def generate(
         probs = top_p_filter(probs, top_p)
         next_token_id = int(torch.multinomial(probs, num_samples=1).item())
 
-        token_ids.append(next_token_id)
-        new_token_ids.append(next_token_id)
         if next_token_id == end_token_id:
             break
+
+        token_ids.append(next_token_id)
+        new_token_ids.append(next_token_id)
 
     return new_token_ids
