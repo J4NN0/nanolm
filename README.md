@@ -5,6 +5,9 @@ A language model built from scratch.
 ## Table of Contents
 
 - [Usage](#usage)
+  - [Train the Model](#train-the-model)
+  - [Generate Text](#generate-text)
+  - [Profile the Tokenizer](#profile-the-tokenizer)
 - [Datasets](#datasets)
 - [BPE Tokenizer](#bpe-tokenizer)
   - [Pre-tokenization](#pre-tokenization)
@@ -45,17 +48,76 @@ Install dependencies:
 uv sync
 ```
 
-Run the project:
+Download TinyStories first (see [Datasets](#datasets)).
+
+### Train the Model
+
+Run the whole pipeline:
 ```shell
 uv run python -m nanolm
 ```
 
-This runs every stage on TinyStories (see [Datasets](#datasets) to download it):
+This runs every stage on TinyStories:
 
 1. Train a BPE tokenizer with a vocabulary of 10,000 tokens (saved to `tokenizers/<dataset>_<vocab size>.json`).
 2. Encode the training and validation text into token IDs (saved to `data/<dataset>-train_<vocab size>.bin` and `data/<dataset>-valid_<vocab size>.bin`).
 3. Train the language model, printing the training and validation loss and saving checkpoints (to `checkpoints/<dataset>_<vocab size>.pt`).
 4. Generate a short story from the trained model.
+
+#### Custom Settings
+
+The pipeline trains with fixed settings. To try others, such as a different learning rate, a longer run or a smaller model, call the training step directly on the token IDs that the pipeline has already encoded:
+```shell
+uv run python -m nanolm.training \
+  --train-path data/TinyStoriesV2-GPT4-train_10000.bin \
+  --valid-path data/TinyStoriesV2-GPT4-valid_10000.bin \
+  --checkpoint-path checkpoints/tinystories_lr3e-3.pt \
+  --max-lr 3e-3
+```
+
+Give each experiment its own `--checkpoint-path`, so it does not overwrite another model. Add `--resume` to continue a run from its checkpoint. Run `uv run python -m nanolm.training --help` to list every option:
+
+- **Model:** `--d-model`, `--num-layers`, `--num-heads`, `--d-ff`, `--context-length`, `--rope-theta`, `--vocab-size`.
+- **Optimization:** `--batch-size`, `--max-iters`, `--max-lr`, `--min-lr`, `--warmup-iters`, `--weight-decay`, `--beta1`, `--beta2`, `--max-grad-norm`.
+- **Logging and checkpoints:** `--log-interval`, `--eval-interval`, `--eval-iters`, `--checkpoint-interval`.
+
+To generate text from such a model, pass the same model options and its `--checkpoint-path` to the generation command.
+
+### Generate Text
+
+Once the model is trained, give it the beginning of a story and it writes the rest:
+```shell
+uv run python -m nanolm.generation \
+  --tokenizer-path tokenizers/TinyStoriesV2-GPT4_10000.json \
+  --checkpoint-path checkpoints/TinyStoriesV2-GPT4_10000.pt \
+  --temperature 0.7 \
+  --top-p 0.9 \
+  --prompt "Once upon a time, there was a little"
+```
+
+The model is not a chatbot. It has only seen short children's stories, so it continues the prompt as one; it does not answer questions or follow instructions. Prompts that sound like the start or middle of a story work best.
+
+The options that change the output:
+
+| Option | Default | Effect |
+|---|---|---|
+| `--prompt` | (required) | The text the model continues. |
+| `--temperature` | `1.0` | Lower values give safer, more repetitive text; higher values give more varied text with more mistakes (see [Temperature](#temperature)). |
+| `--top-p` | `1.0` | Keeps only the most likely tokens whose probabilities add up to this value (see [Top-p Sampling](#top-p-sampling)). |
+| `--max-new-tokens` | `256` | Stops after this many new tokens, if the model has not ended the story before. |
+| `--seed` | none | Makes sampling repeatable: the same seed and prompt give the same text. |
+| `--device` | best available | `cuda`, `mps` or `cpu`. |
+
+Generation stops early when the model produces `<|endoftext|>`, which marks the end of a story. The model options (`--vocab-size`, `--d-model`, `--num-layers`, ...) must match the ones the model was trained with. Their defaults match the pipeline above.
+
+### Profile the Tokenizer
+
+To see where tokenizer training spends its time:
+```shell
+uv run python -m nanolm.profiling
+```
+
+By default, it trains a vocabulary of 1,000 tokens on the TinyStories validation text, prints the slowest functions, and saves the profile to `profiles/` (see [Optimizations](#optimizations)). Use `--input-path` and `--vocab-size` to profile a different file or vocabulary size.
 
 ## Datasets
 
