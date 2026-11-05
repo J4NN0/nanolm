@@ -44,10 +44,7 @@ A language model built from scratch.
   - [Residual Stream](#residual-stream)
   - [Steering Vector](#steering-vector)
   - [Adding the Vector](#adding-the-vector)
-  - [Every Position or Prompt Only](#every-position-or-prompt-only)
   - [Results](#results)
-  - [More Than a Word](#more-than-a-word)
-  - [What Steering Cannot Do](#what-steering-cannot-do)
 - [Putting It Together](#putting-it-together)
 - [Resources](#resources)
 
@@ -74,41 +71,29 @@ This runs every stage on TinyStories:
 3. Train the language model, printing the training and validation loss and saving checkpoints (to `checkpoints/<dataset>_<vocab size>.pt`).
 4. Generate a short story from the trained model.
 
+The settings of every stage, such as the vocabulary size, the model size, the learning rate and the number of training steps, are in `src/nanolm/config.py`. The training, generation and steering commands read them from there too, so a change made there applies to all of them.
+
 ### Train the Model
 
-The pipeline trains with fixed settings. To train with others, such as a different learning rate, a longer run or a smaller model, run only the training step on the token IDs that the pipeline has already encoded:
+To run only the training, for example after changing a setting, use the token IDs that the pipeline has already encoded:
 ```shell
-uv run python -m nanolm.training \
-  --train-path data/TinyStoriesV2-GPT4-train_10000.bin \
-  --valid-path data/TinyStoriesV2-GPT4-valid_10000.bin \
-  --max-lr 3e-3
+uv run python -m nanolm.training
 ```
 
-Run `uv run python -m nanolm.training --help` to list every option.
+The model is saved to `checkpoints/TinyStoriesV2-GPT4_10000.pt` every 1,000 steps and at the end of training. If that file already exists, training continues from it, so an interrupted run picks up where it stopped. A finished model is not trained further.
 
-The model is saved to `checkpoints/checkpoint.pt` every 1,000 steps and at the end of training. If training stops before the end, run the same command with `--resume` to continue from the last checkpoint:
+To train a new model and keep the previous one, save it to another file:
 ```shell
-uv run python -m nanolm.training \
-  --train-path data/TinyStoriesV2-GPT4-train_10000.bin \
-  --valid-path data/TinyStoriesV2-GPT4-valid_10000.bin \
-  --max-lr 3e-3 \
-  --resume
+uv run python -m nanolm.training --checkpoint-path checkpoints/experiment.pt
 ```
 
-Every run saves to the same checkpoint, so a new run replaces the model of the previous one. To keep several models, for example one for each learning rate, give each run its own `--checkpoint-path`, and pass the same path when resuming it.
-
-To generate text from such a model, pass the same model options and its `--checkpoint-path` to the generation command.
+Run the same command again to continue it. Generation and steering load the checkpoint set in `src/nanolm/config.py`, so set it there to use this model.
 
 ### Generate Text
 
 Once the model is trained, give it the beginning of a story and it writes the rest:
 ```shell
-uv run python -m nanolm.generation \
-  --tokenizer-path tokenizers/TinyStoriesV2-GPT4_10000.json \
-  --checkpoint-path checkpoints/TinyStoriesV2-GPT4_10000.pt \
-  --temperature 0.7 \
-  --top-p 0.9 \
-  --prompt "Once upon a time, there was a little"
+uv run python -m nanolm.generation --prompt "Once upon a time, there was a little"
 ```
 
 The model is not a chatbot. It has only seen short children's stories, so it continues the prompt as one; it does not answer questions or follow instructions. Prompts that sound like the start or middle of a story work best.
@@ -124,7 +109,7 @@ The options that change the output:
 | `--seed` | none | Makes sampling repeatable: the same seed and prompt give the same text. |
 | `--device` | best available | `cuda`, `mps` or `cpu`. |
 
-Generation stops early when the model produces `<|endoftext|>`, which marks the end of a story. The model options (`--vocab-size`, `--d-model`, `--num-layers`, ...) must match the ones the model was trained with. Their defaults match the pipeline above.
+Generation stops early when the model produces `<|endoftext|>`, which marks the end of a story.
 
 ### Steer Generation
 
@@ -135,7 +120,7 @@ uv run python -m nanolm.steering \
   --toward "dragon"
 ```
 
-Without steering, the model continues this prompt with a dragon in none of 64 stories. With this command, 64% of the stories are about a dragon. The tokenizer, the checkpoint and the model options default to the trained TinyStories model.
+Without steering, the model continues this prompt with a dragon in none of 64 stories. With this command, 64% of the stories are about a dragon.
 
 The steering options:
 
@@ -167,7 +152,7 @@ uv run python -m nanolm.steering \
   --compare
 ```
 
-Steering away from girl makes the direction cleaner: 92% of the stories are about a dragon instead of 64%, and the text is more natural. See [Steering](#steering) for how it works and how to choose the layer and strength.
+Steering away from girl makes the direction cleaner: 92% of the stories are about a dragon instead of 64%, and the text is more natural. See [Steering](#steering) for how it works.
 
 ### Profile the Tokenizer
 
@@ -939,7 +924,7 @@ With the full distribution the model sometimes picks unlikely tokens and produce
 
 The trained model has habits of its own. When it continues `"Once upon a time, there was a little"`, the next word is `"girl"` 37% of the time and `"boy"` 34% of the time. *Steering* pushes the generated text towards a chosen concept, such as a dragon, while the model runs. The weights stay the same, and nothing is retrained.
 
-This project uses *activation addition* (ActAdd, Turner et al., 2023). It finds a direction inside the model that stands for the concept, and adds it to the model's vectors during generation.
+This project uses *activation addition* (ActAdd, Turner et al., 2023): it finds a vector inside the model that stands for the concept, and adds it to the model's vectors during generation.
 
 ### Residual Stream
 
@@ -949,92 +934,37 @@ Since every block reads the same vector and adds to it, a vector added from outs
 
 ### Steering Vector
 
-To find a direction for a concept, run the model on two texts that differ only in that concept:
+To find the vector for a concept, the model reads the word for it, `" dragon"`, and the residual stream after block 1 is taken at that token. This is the *steering vector*.
 
-```
-toward      Once upon a time, there was a little dragon
-away from   Once upon a time, there was a little girl
-```
-
-Then take the residual stream after a chosen block at the last token of each text. Both vectors contain what the two texts share: the story opening, the position in the sentence, and the expectation of what usually follows a character. Subtracting one vector from the other cancels these shared parts. What is left mostly describes what separates a dragon from a girl. This difference is the *steering vector*. Finding it only takes one run of the model on each text.
-
-The two texts can also be single words, `" dragon"` and `" girl"`. The sentence was meant to capture the word as part of a story, but after block 1 the vector of the last token still mostly comes from the token itself, since only one block has mixed in the context. In this model, the two words give a cleaner direction than the two sentences (see [Results](#results)).
-
-The second text can also be left out, and then the whole vector of `" dragon"` is used. It still steers, but it also pushes everything that `" dragon"` shares with other words, such as being a noun at a certain position. The model then more often drops the noun itself, and the text is less natural.
+That vector also contains what `" dragon"` shares with every other word in the same place, such as being a noun. To keep only the concept, the model can also read a second word, such as `" girl"`, and its vector is subtracted from the first. What both words share cancels out, and what is left mostly describes what separates a dragon from a girl.
 
 ### Adding the Vector
 
-During generation, the steering vector is multiplied by a *strength* and added to the output of the same block. The later blocks then continue from a residual stream that leans towards dragons.
+During generation, the steering vector is multiplied by a *strength* and added to the residual stream after block 1, at the prompt tokens only. The new tokens are computed normally, but attention lets them read the steered prompt, so the story starts out about a dragon and is then told as usual.
 
-The *layer* is the block whose output is used, both to measure the vector and to add it. In this model, earlier blocks steer better. After block 1, about half of the stories mention a dragon. After block 2, it is at most 44%, and after blocks 3 and 4 it is at most 3%, at any strength. A vector added late passes through fewer blocks that can build on it.
+The vector is added after block 1 because the later blocks can then build on it: a vector added after the last blocks has little effect in this model. The strength is set to `1`, since the vector is already about as long as the residual stream itself. Much weaker, and nothing changes; much stronger, and the text breaks.
 
-The strength is easiest to judge against the length of the residual stream, which grows from block to block:
-
-```
-after block              1      2      3      4
-residual stream length   25.5   38.6   57.1   94.3
-dragon vector length     36.2   48.4   61.1   82.3
-```
-
-The steering vector is about as long as the residual stream itself, so even a strength of `1` adds roughly as much as all the blocks before it have computed. Small strengths do nothing visible: up to `0.3`, no story mentions a dragon. Large ones break the text: at strength `4`, it turns into a list of unrelated words.
-
-### Every Position or Prompt Only
-
-The vector can be added in two places:
-
-- **At every position.** The vector is added to the prompt and to every new token, so the push never stops. It works, but it costs fluency. After block 1 at strength `0.5`, about half of the stories mention a dragon, and the validation loss rises from 1.665 to 2.46: with the vector added, the model predicts real stories much worse. At strength `0.75`, 91% of the stories mention a dragon, but the validation loss is 3.64 and the text breaks down and repeats itself: `"The lived in a big cave. It was in a cave. He had a big cave."`
-- **At the prompt only.** The vector is added only to the prompt tokens. The new tokens are computed normally, but attention lets them read the steered prompt, so the story starts out about a dragon and is then told as usual. This needs a higher strength, because the push comes from fewer tokens, but the text stays much more natural.
-
-The same seed, without and with steering at the prompt only (block 1, strength `1.0`):
+The same seed, without and with steering from `" girl"` towards `" dragon"`:
 
 ```
 not steered   Once upon a time, there was a little girl named Amy. Amy loved to play outside.
               One day, she saw a big red ball in the yard. She wanted to play with it.
 
-steered       Once upon a time, there was a little dragon. He lived in a big, green forest.
-              The dragon was very nice to all the animals in the forest.
-              One day, the dragon met a little bird.
+steered       Once upon a time, there was a little dragon. He lived in a big, green castle with his family.
+              They had a lot of fun together.
 ```
 
 ### Results
 
-Each setting below wrote 64 stories of 80 new tokens from `"Once upon a time, there was a little"`, with a temperature of `0.7` and top-p of `0.9` (32 stories for every position at `0.75` and for the logit bias). Unless the row says otherwise, the steering vector comes from the two sentences. A story counts as a hit when it contains `"dragon"` or `"dragons"`. To measure fluency, the unsteered model reads each generated story, and the fluency is its average cross-entropy per token: how surprised the normal model is by the text. Lower means more natural.
+Each row wrote 64 stories of 80 new tokens from `"Once upon a time, there was a little"`, with a temperature of `0.7` and top-p of `0.9`. A story counts when it contains `"dragon"` or `"dragons"`. To measure how natural the text is, the unsteered model reads each story, and its average cross-entropy per token is the *fluency*: how surprised the normal model is by the text. Lower means more natural.
 
-| Method | Stories with a dragon | Fluency |
+| Steering | Stories with a dragon | Fluency |
 |---|---|---|
-| No steering | 0% | 0.67 |
-| Every position, block 1, strength `0.5` | 48% | 1.68 |
-| Every position, block 1, strength `0.75` | 91% | 2.18 |
-| Prompt only, block 1, strength `1.0` | 70% | 0.86 |
-| Prompt only, block 1, strength `1.5` | 64% | 0.98 |
-| Prompt only, block 1, strength `2.0` | 63% | 1.03 |
-| Prompt only, block 1, strength `1.0`, words `" dragon"` − `" girl"` | 92% | 0.87 |
-| Prompt only, block 1, strength `1.5`, words `" dragon"` − `" girl"` | 77% | 0.99 |
-| Prompt only, block 1, strength `1.0`, word `" dragon"` alone | 64% | 1.02 |
-| Prompt only, block 1, strength `1.5`, word `" dragon"` alone | 80% | 1.08 |
-| Logit bias of +8 on `" dragon"` | 97% | 1.25 |
+| None | 0% | 0.67 |
+| Towards `" dragon"` | 64% | 1.02 |
+| From `" girl"` towards `" dragon"` | 92% | 0.87 |
 
-Steering only the prompt gives more hits than steering every position at `0.5`, with text that is almost as natural as without steering. A higher strength at the prompt does not help: the hit rate stays the same or drops, and the text gets less natural. The two words work best of all: almost as many hits as the logit bias, with text nearly as natural as without steering.
-
-The *logit bias* is a simpler baseline for comparison. It adds a fixed number to the logit of the token `" dragon"` before every sampling step, so the word becomes more likely wherever it could appear. It reaches the most hits, but it only works for a word that is a single token, and it changes only which word is picked, not what the model has in mind.
-
-### More Than a Word
-
-The steering vector carries more than the word "dragon": it carries the world that dragons live in. At every position, block 1, strength `0.75`, every single story mentions a cave. At strength `4`, the most likely next word after the prompt is `"roared"`. When only the prompt is steered, the model sometimes skips the noun and goes straight to the dragon's setting:
-
-```
-Once upon a time, there was a little, but he was very brave. He lived in a big forest with many trees and flowers.
-
-Once upon a time, there was a little cave. It was a very special cave. Many animals lived there.
-```
-
-### What Steering Cannot Do
-
-The first goal was a goblin, not a dragon, and it failed in every setting: in all 4 blocks, at about 20 strengths, with 3 kinds of steering vector, and with a logit bias. None of 32 stories mentioned a goblin, except one for the strongest logit bias. Even when the prompt itself says it, `"Once upon a time, there was a little goblin."`, none of 32 continuations mentions the goblin again. With a dragon in the same prompt, 29 of 32 do.
-
-The training data explains why. The word "goblin" appears in none of the 27,630 validation stories and in only 62 of the 2.72 million training stories, and the tokenizer splits it into three tokens (`" go"`, `"bl"`, `"in"`). The model never learned what a goblin is. A dragon, by comparison, appears 56,220 times in the training text and in 0.51% of the validation stories.
-
-Steering can only make the model use a concept it has already learned. It amplifies something that is already in the residual stream, and it cannot add knowledge that the training data never contained.
+Steering can only make the model use a concept it has already learned. A goblin failed in every setting: the word appears in only 62 of the 2.72 million training stories, so the model never learned what a goblin is. A dragon appears 56,220 times.
 
 ## Putting It Together
 

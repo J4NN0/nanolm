@@ -2,11 +2,21 @@ import argparse
 
 import torch
 
+from nanolm.config import (
+    CHECKPOINT_PATH,
+    CONTEXT_LENGTH,
+    D_FF,
+    D_MODEL,
+    NUM_HEADS,
+    NUM_LAYERS,
+    ROPE_THETA,
+    TOKENIZER_PATH,
+    VOCAB_SIZE,
+)
 from nanolm.generation import generate
 from nanolm.tokenizer import Tokenizer
 from nanolm.transformer import TransformerLM
 
-DEFAULT_CHECKPOINT_PATH = "checkpoints/checkpoint.pt"
 DEFAULT_END_TOKEN = "<|endoftext|>"
 
 
@@ -14,23 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate text from a trained Transformer language model")
 
     parser.add_argument("--prompt", required=True)
-    parser.add_argument("--tokenizer-path", required=True)
-    parser.add_argument("--checkpoint-path", default=DEFAULT_CHECKPOINT_PATH)
 
     # Sampling
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--end-token", default=DEFAULT_END_TOKEN)
-
-    # Model: must match the values used for training
-    parser.add_argument("--vocab-size", type=int, default=10000)
-    parser.add_argument("--context-length", type=int, default=256)
-    parser.add_argument("--d-model", type=int, default=512)
-    parser.add_argument("--num-layers", type=int, default=4)
-    parser.add_argument("--num-heads", type=int, default=16)
-    parser.add_argument("--d-ff", type=int, default=1344)
-    parser.add_argument("--rope-theta", type=float, default=10000.0)
 
     parser.add_argument("--device", default=None, help="e.g. cpu, cuda:0, mps (default: best available)")
     parser.add_argument("--seed", type=int, default=None)
@@ -51,20 +50,20 @@ def main() -> None:
     if args.seed is not None:
         torch.manual_seed(args.seed)
 
-    tokenizer = Tokenizer.load(args.tokenizer_path)
+    tokenizer = Tokenizer.load(TOKENIZER_PATH)
 
     model = TransformerLM(
-        vocab_size=args.vocab_size,
-        context_length=args.context_length,
-        d_model=args.d_model,
-        num_layers=args.num_layers,
-        num_heads=args.num_heads,
-        d_ff=args.d_ff,
-        rope_theta=args.rope_theta,
+        vocab_size=VOCAB_SIZE,
+        context_length=CONTEXT_LENGTH,
+        d_model=D_MODEL,
+        num_layers=NUM_LAYERS,
+        num_heads=NUM_HEADS,
+        d_ff=D_FF,
+        rope_theta=ROPE_THETA,
         device=device,
     )
     # Generation needs only the weights, not the optimizer state
-    checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu")
     model.load_state_dict(checkpoint["model"])
 
     end_token_id = None
