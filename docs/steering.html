@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Follow how nanolm is steered towards a dragon: find a vector for the concept, add it inside the model, and watch the story change.">
+<title>Here Be Dragons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a station track across the top, one instrument panel per step, and a "in hand" readout of the data at the bottom of the panel */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --ink: #16202b;
+  --muted: #5a6776;
+  --line: #d6dde5;
+  --accent: #2f5bea;      /* positive values, attention, kept tokens */
+  --warm: #d9662a;        /* negative values, the predicted word */
+  --soft: #e6ebf8;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #161d26; --ink: #e5eaf0; --muted: #94a1b0; --line: #2a3542;
+    --accent: #7d9bff; --warm: #f2985a; --soft: #1d2840; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #161d26; --ink: #e5eaf0; --muted: #94a1b0; --line: #2a3542;
+  --accent: #7d9bff; --warm: #f2985a; --soft: #1d2840; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
+
+header h1 {
+  font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4.4vw, 42px);
+  line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance;
+}
+header h1 .q { color: var(--warm); }
+header p { margin: 8px 0 0; color: var(--muted); max-width: 64ch; }
+
+/* Station track */
+.track-scroll { overflow-x: auto; padding-bottom: 4px; }
+.track { display: flex; gap: 14px; min-width: max-content; }
+.group { display: grid; gap: 6px; }
+.group-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); font-weight: 600;
+  border-bottom: 1px solid var(--line); padding-bottom: 4px;
+}
+.stations { display: flex; gap: 4px; }
+.station {
+  font: 500 12px/1 var(--body); color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; cursor: pointer; white-space: nowrap;
+}
+.station:hover { border-color: var(--accent); color: var(--ink); }
+.station.done { color: var(--ink); background: var(--soft); border-color: transparent; }
+.station.now { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.station:focus-visible, button:focus-visible { outline: 2px solid var(--warm); outline-offset: 2px; }
+
+/* Panel */
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  display: grid; grid-template-rows: auto 1fr auto; min-height: 520px;
+}
+.panel-head { padding: 22px 24px 0; display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+.panel-head h2 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0; line-height: 1.15; }
+.lede { margin: 0; max-width: 72ch; }
+.stage { padding: 20px 24px 24px; display: grid; gap: 18px; align-content: start; min-width: 0; }
+.stage.enter { animation: rise 280ms ease-out; }
+@keyframes rise { from { opacity: 0.35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.inhand {
+  border-top: 1px solid var(--line); padding: 12px 24px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 13px;
+}
+.inhand .k { font-family: var(--body); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.inhand .v { min-width: 0; overflow-wrap: anywhere; }
+
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls .count { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: auto; font-size: 14px; }
+.btn {
+  font: 600 15px/1 var(--body); border-radius: 10px; padding: 12px 18px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); min-width: 150px; }
+.hint { color: var(--muted); font-size: 13px; }
+
+/* Shared visual pieces */
+.mono { font-family: var(--mono); }
+.label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chip {
+  font-family: var(--mono); font-size: 18px; padding: 8px 12px; border-radius: 8px;
+  background: var(--soft); border: 1px solid var(--line); white-space: pre;
+}
+.chip.small { font-size: 13px; padding: 4px 7px; }
+.chip.hot { background: var(--warm); color: var(--surface); border-color: var(--warm); }
+.chip .sub { display: block; font-size: 11px; color: var(--muted); text-align: center; margin-top: 2px; }
+.chip.hot .sub { color: var(--surface); }
+.arrow { color: var(--muted); font-family: var(--mono); }
+.bigtext { font-family: var(--display); font-size: clamp(34px, 7vw, 64px); font-weight: 500; line-height: 1.1; }
+.bigtext .new { color: var(--warm); font-weight: 700; }
+.caret { display: inline-block; width: 0.08em; height: 0.9em; background: var(--accent); vertical-align: -0.08em; margin-left: 4px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.cols > * { min-width: 0; }
+.box { border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.note { color: var(--muted); font-size: 13.5px; margin: 0; }
+
+/* Merge trace */
+.trace { display: grid; gap: 6px; }
+.trace-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.trace-row .why { font-size: 12.5px; color: var(--muted); font-family: var(--mono); min-width: 150px; }
+.sym { font-family: var(--mono); font-size: 14px; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); white-space: pre; }
+.sym.fresh { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+
+/* Vector strips */
+.strip { display: grid; grid-template-columns: repeat(48, minmax(0, 1fr)); gap: 1px; border-radius: 4px; overflow: hidden; }
+.strip i { display: block; aspect-ratio: 1 / 2.2; }
+.vrow { display: grid; grid-template-columns: 74px 1fr; gap: 10px; align-items: center; }
+.vrow .tag { font-family: var(--mono); font-size: 13px; white-space: pre; text-align: right; }
+.legend { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+
+/* Attention matrix */
+.matrix { display: grid; gap: 3px; width: max-content; }
+.matrix .cell {
+  width: 40px; height: 30px; border-radius: 4px; display: grid; place-items: center;
+  font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.matrix .cell.focus { outline: 1.5px solid var(--warm); outline-offset: -1.5px; }
+.matrix .rowhead.focus { color: var(--warm); font-weight: 600; }
+.matrix .colhead { writing-mode: vertical-rl; transform: rotate(180deg); justify-items: start; padding-bottom: 4px; }
+.scroll { overflow-x: auto; }
+.grid-sm { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.grid-sm > * { min-width: 0; }
+.chip.wide { white-space: normal; width: fit-content; max-width: 100%; }
+.lens-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.lens { display: grid; gap: 6px; padding: 8px; border-radius: 8px; }
+.lens.on { background: var(--soft); }
+.matrix .cell.off { background: repeating-linear-gradient(45deg, transparent 0 5px, var(--line) 5px 6px); color: transparent; }
+.matrix .head { font-family: var(--mono); font-size: 12px; color: var(--muted); display: grid; place-items: center; white-space: pre; }
+.matrix .rowhead { justify-items: end; padding-right: 6px; }
+.heads { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; max-width: 420px; }
+.mini { display: grid; gap: 1px; cursor: pointer; border: 1px solid var(--line); border-radius: 4px; padding: 2px; background: var(--surface); }
+.mini.sel { border-color: var(--warm); box-shadow: 0 0 0 1px var(--warm); }
+.mini i { aspect-ratio: 1; display: block; border-radius: 1px; }
+.seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.seg button { font: 500 12px/1 var(--body); padding: 6px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.seg button.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+/* Bars */
+.bars { display: grid; gap: 5px; }
+.bar { display: grid; grid-template-columns: 80px 1fr 56px; gap: 10px; align-items: center; font-size: 13px; }
+.bar .t { font-family: var(--mono); white-space: pre; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.bar .track-b { height: 16px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 500ms ease; }
+.bar.win .fill { background: var(--warm); }
+.bar.two { grid-template-columns: 80px 1fr 52px 56px; }
+.bar.head-row { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+.bar.drop { opacity: 0.38; }
+.bar .n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+.meter { display: grid; grid-template-columns: 160px 1fr 54px; gap: 10px; align-items: center; font-size: 13px; }
+.meter .track-b { height: 10px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+.meter .fill { height: 100%; background: var(--muted); border-radius: 999px; }
+
+/* Sampling wheel (a stacked bar with a needle) */
+.roulette { position: relative; height: 64px; border-radius: 8px; overflow: hidden; display: flex; border: 1px solid var(--line); }
+.roulette span { height: 100%; display: grid; place-items: center; font-family: var(--mono); font-size: 13px; color: var(--surface); white-space: pre; overflow: hidden; }
+.needle { position: absolute; top: -6px; bottom: -6px; width: 3px; background: var(--ink); left: 0; transition: left 1100ms cubic-bezier(.2,.8,.2,1); }
+.needle::after { content: ""; position: absolute; top: 0; left: -5px; border: 6.5px solid transparent; border-top-color: var(--ink); }
+
+.flow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+  .panel-head, .stage { padding-left: 16px; padding-right: 16px; }
+  .inhand { padding-left: 16px; padding-right: 16px; }
+  .matrix .cell { width: 30px; height: 26px; font-size: 9.5px; }
+  .vrow { grid-template-columns: 56px 1fr; }
+  .bar { grid-template-columns: 70px 1fr 54px; }
+  .bar.two { grid-template-columns: 64px 1fr 48px 52px; font-size: 12px; }
+  .meter { grid-template-columns: 120px 1fr 46px; }
+  .heads { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage.enter, .caret { animation: none; }
+  .needle, .bar .fill { transition: none; }
+}
+/* Steering */
+.bar .fill { display: block; }
+header h1 .was { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 0.06em; font-weight: 500; }
+.op { font-family: var(--mono); font-size: 20px; color: var(--muted); text-align: center; }
+.vrow.sum .tag { color: var(--warm); font-weight: 600; }
+.pos { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
+.pos .cellp { border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; display: grid; gap: 4px; justify-items: center; font-family: var(--mono); font-size: 13px; white-space: pre; }
+.pos .cellp.on { border-color: var(--warm); box-shadow: inset 0 0 0 1px var(--warm); }
+.pos .cellp .plus { font-size: 11px; color: var(--warm); font-weight: 600; }
+.pos .cellp.off .plus { color: var(--muted); font-weight: 400; }
+.story { font-family: var(--body); font-size: 16px; line-height: 1.5; margin: 0; white-space: pre-wrap; }
+.story .p { color: var(--muted); }
+.story .hit { color: var(--warm); font-weight: 700; }
+.blocks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.blocks > * { min-width: 0; }
+.vbar { display: grid; gap: 4px; justify-items: center; font-size: 12px; }
+.vbar .col { width: 100%; height: 120px; background: var(--bg); border-radius: 6px; position: relative; overflow: hidden; }
+.vbar .col span { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 6px; transition: height 500ms ease; }
+.vbar .n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+table.res { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.res th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.res td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.res .n { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.res .track-b { display: block; height: 12px; background: var(--bg); border-radius: 4px; overflow: hidden; min-width: 60px; }
+table.res .fill { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+table.res tr.best .fill { background: var(--warm); }
+@media (max-width: 560px) {
+  .blocks { gap: 6px; }
+  .vbar .col { height: 90px; }
+  .story { font-size: 15px; }
+  table.res { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1 id="headline"></h1>
+    <p>Follow how the model is pushed towards a concept while it writes, without changing a single weight. All numbers come from the nanolm model (22.7 million weights, 10,000-token vocabulary) after the full training run of 5,000 steps on TinyStories, computed on the CPU.</p>
+  </header>
+
+  <div class="track-scroll"><nav class="track" id="track" aria-label="Steps"></nav></div>
+
+  <section class="panel" aria-live="polite">
+    <div class="panel-head">
+      <div class="eyebrow" id="eyebrow"></div>
+      <h2 id="title"></h2>
+      <p class="lede" id="lede"></p>
+    </div>
+    <div class="stage" id="stage"></div>
+    <div class="inhand"><span class="k">In hand</span><span class="v" id="inhand"></span></div>
+  </section>
+
+  <div class="controls">
+    <span class="count" id="count"></span>
+    <span class="hint">Arrow keys work too</span>
+    <button class="btn" id="back" type="button">Back</button>
+    <button class="btn primary" id="next" type="button">Next step</button>
+  </div>
+</div>
+
+<script>
+const D = {"prompt": "Once upon a time, there was a little", "tokens": ["Once", "␣upon", "␣a", "␣time", ",", "␣there", "␣was", "␣a", "␣little"], "ids": [430, 439, 259, 398, 44, 401, 283, 259, 390], "layer": 1, "num_blocks": 4, "concept_tokens": {"dragon": ["␣dragon"], "girl": ["␣girl"], "goblin": ["␣go", "bl", "in"]}, "vectors": {"dragon": [-0.478, 2.688, 1.614, -0.819, -0.837, 1.303, -1.576, 0.549, -0.221, 0.55, 0.131, 0.725, -0.139, -0.72, -0.248, 1.397, 0.67, 1.079, -0.87, -0.745, 0.349, -0.416, -2.539, 0.059, 0.847, -0.659, -1.214, 0.25, 0.746, 0.678, 2.623, 1.279, 0.406, -0.038, -0.148, -1.398, 3.971, -0.453, -2.35, -1.258, 1.768, -0.943, -0.658, 2.25, -0.227, 0.239, -0.183, 1.419], "girl": [-1.057, -1.319, 0.545, -1.599, 0.442, 0.387, -1.425, -0.397, 3.216, -0.803, 1.3, 0.005, -0.568, -0.921, 0.023, 0.09, 0.228, 1.453, 0.017, -1.138, -0.208, -0.443, -3.57, -1.842, 1.337, -0.139, -0.365, -0.769, -2.352, 1.176, -2.79, 0.634, 1.87, 0.568, -2.108, -0.41, 0.73, -1.459, 0.932, -0.363, 0.823, -0.544, 1.624, 0.024, -0.797, -1.529, 1.218, 1.032], "diff": [0.58, 4.007, 1.069, 0.78, -1.279, 0.916, -0.151, 0.945, -3.437, 1.352, -1.169, 0.72, 0.429, 0.201, -0.271, 1.307, 0.442, -0.374, -0.887, 0.393, 0.557, 0.027, 1.032, 1.901, -0.49, -0.519, -0.849, 1.019, 3.098, -0.498, 5.413, 0.645, -1.464, -0.606, 1.959, -0.989, 3.241, 1.005, -3.282, -0.895, 0.945, -0.4, -2.281, 2.227, 0.57, 1.768, -1.401, 0.387], "dragon_norm": 30.0, "girl_norm": 29.8, "diff_norm": 39.0, "cos": 0.15}, "prompt_norms": [32.2, 39.8, 26.2, 24.9, 22.9, 40.8, 27.2, 27.7, 27.3], "prompt_stream_last": [-2.316, -0.233, 2.08, 1.001, -0.277, 0.151, 0.78, 0.483, -1.518, -0.17, -1.292, -0.928, 1.28, 0.437, -1.104, -0.043, 0.229, -0.04, -0.719, -0.767, 0.311, -0.466, -1.86, 1.762, 0.292, 0.582, -1.596, -0.995, 1.15, -0.696, -0.207, -0.316, 0.672, -0.807, 3.04, 1.141, 0.5, 0.727, 0.64, -0.86, -0.951, 0.054, 0.28, 0.831, 1.786, 0.912, -2.237, 0.687], "steered_last": [-1.736, 3.774, 3.149, 1.781, -1.556, 1.067, 0.629, 1.428, -4.956, 1.182, -2.461, -0.207, 1.709, 0.639, -1.376, 1.264, 0.67, -0.414, -1.606, -0.374, 0.868, -0.439, -0.828, 3.662, -0.198, 0.062, -2.445, 0.023, 4.248, -1.194, 5.206, 0.329, -0.792, -1.413, 4.999, 0.152, 3.741, 1.733, -2.642, -1.755, -0.006, -0.345, -2.001, 3.058, 2.356, 2.681, -3.638, 1.074], "by_strength": [{"top": [{"token": "␣girl", "p": 0.3654}, {"token": "␣boy", "p": 0.3444}, {"token": "␣dog", "p": 0.0631}, {"token": "␣bird", "p": 0.0269}, {"token": "␣cat", "p": 0.0151}, {"token": "␣bunny", "p": 0.0137}, {"token": "␣fish", "p": 0.0079}, {"token": "␣car", "p": 0.0071}], "dragon": 0.0007, "lens": [{"dragon": 0.0, "girl": 0.1311}, {"dragon": 0.0, "girl": 0.2623}, {"dragon": 0.0, "girl": 0.3489}, {"dragon": 0.0007, "girl": 0.3654}], "strength": 0, "story": " boy named Tim. Tim was very impatient. He wanted to go outside and play. His mom said, \"Wait, Tim! I am busy. You can do it!\" Tim was sad, but he wanted to play outside.\nTim saw his friend, Sue, playing with a ball."}, {"top": [{"token": "␣girl", "p": 0.269}, {"token": "␣boy", "p": 0.2626}, {"token": "␣dog", "p": 0.0807}, {"token": "␣bird", "p": 0.0472}, {"token": "␣cat", "p": 0.0247}, {"token": "␣bunny", "p": 0.0238}, {"token": "␣fish", "p": 0.0206}, {"token": "␣mouse", "p": 0.0189}], "dragon": 0.004, "lens": [{"dragon": 0.0001, "girl": 0.1117}, {"dragon": 0.0, "girl": 0.1905}, {"dragon": 0.0002, "girl": 0.2221}, {"dragon": 0.004, "girl": 0.269}], "strength": 0.25, "story": " boy named Tim. Tim was very impatient. He wanted to go outside and play with his ball.\nTim asked his mom, \"Mom, can I go outside and play?\" His mom said, \"Yes, but be careful.\" Tim was very happy."}, {"top": [{"token": "␣boy", "p": 0.1423}, {"token": "␣girl", "p": 0.1411}, {"token": "␣bird", "p": 0.0819}, {"token": "␣dog", "p": 0.0637}, {"token": "␣mouse", "p": 0.0506}, {"token": "␣dragon", "p": 0.0378}, {"token": "␣fish", "p": 0.0372}, {"token": "␣cat", "p": 0.0334}], "dragon": 0.0378, "lens": [{"dragon": 0.0001, "girl": 0.0426}, {"dragon": 0.0002, "girl": 0.0721}, {"dragon": 0.0036, "girl": 0.0704}, {"dragon": 0.0378, "girl": 0.1411}], "strength": 0.5, "story": " dog named Max. Max was a very persistent dog. He loved to play with his friends in the park. One day, Max saw a big, red ball. He wanted to play with it.\nMax took the big, red ball and ran to the big, red ball."}, {"top": [{"token": "␣dragon", "p": 0.3303}, {"token": ".", "p": 0.0611}, {"token": ",", "p": 0.032}, {"token": "␣and", "p": 0.0225}, {"token": "␣mouse", "p": 0.0152}, {"token": "␣cave", "p": 0.0141}, {"token": "␣bird", "p": 0.0123}, {"token": "␣lived", "p": 0.0113}], "dragon": 0.3303, "lens": [{"dragon": 0.0002, "girl": 0.0044}, {"dragon": 0.001, "girl": 0.0031}, {"dragon": 0.0559, "girl": 0.0018}, {"dragon": 0.3303, "girl": 0.0008}], "strength": 1, "story": " dragon. He lived in a big cave with his family. The dragon was very strong and kind.\nOne day, the dragon went for a walk in the forest. He saw a big tree and decided to climb it. As he climbed, he met a little bird."}, {"top": [{"token": "␣roared", "p": 0.0552}, {"token": "␣dragon", "p": 0.0542}, {"token": ".", "p": 0.0253}, {"token": "␣lived", "p": 0.0202}, {"token": "!", "p": 0.0136}, {"token": "␣fight", "p": 0.0117}, {"token": "␣bit", "p": 0.0114}, {"token": "␣and", "p": 0.0092}], "dragon": 0.0542, "lens": [{"dragon": 0.0001, "girl": 0.0003}, {"dragon": 0.0006, "girl": 0.0002}, {"dragon": 0.0171, "girl": 0.0001}, {"dragon": 0.0542, "girl": 0.0}], "strength": 2, "story": " lived in a small town. The town was very happy because it had a big heart and kind heart. The town was always there to help people, so everyone would watch them from above.\nOne day, a little boy named Tim came to the town."}, {"top": [{"token": "␣roared", "p": 0.0752}, {"token": "ing", "p": 0.0089}, {"token": "␣lived", "p": 0.0083}, {"token": "␣grew", "p": 0.0082}, {"token": "␣himself", "p": 0.0079}, {"token": "s", "p": 0.0077}, {"token": "␣fight", "p": 0.0067}, {"token": "␣gone", "p": 0.0062}], "dragon": 0.0041, "lens": [{"dragon": 0.0001, "girl": 0.0001}, {"dragon": 0.0003, "girl": 0.0}, {"dragon": 0.0019, "girl": 0.0}, {"dragon": 0.0041, "girl": 0.0}], "strength": 4, "story": " landed on the ground. The people were very surprised. They did not know what to do.\nA little girl named Lily walked up to the dragon. She said, \"Hi, dragon! Can I live with you?\" The dragon said, \"Yes, Lily! Let's be friends!\""}], "toward_only": {"top": [{"token": ".", "p": 0.6447}, {"token": "␣named", "p": 0.178}, {"token": "␣who", "p": 0.0289}, {"token": "␣and", "p": 0.0207}, {"token": "␣in", "p": 0.0188}, {"token": ",", "p": 0.0154}, {"token": "!", "p": 0.0111}, {"token": "␣lived", "p": 0.0076}], "dragon": 0.0044, "lens": [{"dragon": 0.0001, "girl": 0.0091}, {"dragon": 0.0003, "girl": 0.0344}, {"dragon": 0.0104, "girl": 0.0734}, {"dragon": 0.0044, "girl": 0.004}], "story": ". He lived in a big house with a nice family. The family had a big dog, a small cat, and a small dog. The big dog was very nice and always helped the little cat.\nOne day, the big dog was feeling very tired."}, "seed": 3};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = (p) => (p * 100).toFixed(p >= 0.1 ? 0 : p >= 0.001 ? 1 : 2) + "%";
+const mono = (t) => `<span class="mono">${esc(t)}</span>`;
+const tokChip = (t, sub, hot) => `<span class="chip${hot ? " hot" : ""}">${esc(t)}${sub !== undefined ? `<span class="sub">${esc(sub)}</span>` : ""}</span>`;
+const T = D.tokens.length;
+const LAST = D.tokens[T - 1];
+const B = D.layer;
+const NUM_BLOCKS = D.num_blocks;
+const V = D.vectors;
+const byS = (s) => D.by_strength.find((x) => x.strength === s);
+const OFF = byS(0);
+const ON = byS(1);
+
+document.getElementById("headline").innerHTML = `${esc(D.prompt)} <span class="was">girl</span> <span class="q">dragon</span>`;
+
+function strip(values, max) {
+  max = max || Math.max(...values.map(Math.abs)) || 1;
+  return `<div class="strip">${values.map((v) => {
+    const a = Math.min(100, Math.round((Math.abs(v) / max) * 100));
+    return `<i title="${v}" style="background: color-mix(in srgb, var(${v >= 0 ? "--accent" : "--warm"}) ${a}%, var(--bg))"></i>`;
+  }).join("")}</div>`;
+}
+const absMax = (...rows) => Math.max(...rows.flat().map(Math.abs));
+const vecLegend = `<div class="legend"><span><i class="sw" style="background: var(--accent)"></i>positive</span><span><i class="sw" style="background: var(--warm)"></i>negative</span><span>stronger color = larger number; the first 48 of 512 numbers are shown, on one shared scale</span></div>`;
+
+function bars(items, hot) {
+  return `<div class="bars">${items.map((x) => `
+    <div class="bar${x.token === hot ? " win" : ""}">
+      <span class="t">${esc(x.token)}</span>
+      <span class="track-b"><span class="fill" style="width:${x.p * 100}%"></span></span>
+      <span class="n">${pct(x.p)}</span>
+    </div>`).join("")}</div>`;
+}
+const topWords = (row, k = 6) => row.top.slice(0, k);
+
+// The story text after the prompt, with every "dragon" highlighted
+function story(text) {
+  const safe = esc(text).replace(/(dragons?)/gi, `<span class="hit">$1</span>`);
+  return `<p class="story"><span class="p">${esc(D.prompt)}</span>${safe}</p>`;
+}
+
+const steps = [];
+const add = (s) => steps.push(s);
+
+add({ group: "The Habit", short: "Prompt", title: "What the model wants to write",
+  lede: "Steering starts from a model with habits of its own. After this prompt it almost always writes a girl or a boy, and a dragon is very unlikely.",
+  hand: `"${esc(D.prompt)}"`,
+  render: () => `<div class="cols">
+    <div class="box"><div class="label">Next word after ${esc(LAST)}, not steered</div>${bars(topWords(OFF), "␣girl")}</div>
+    <div class="box"><div class="label">The goal</div>
+      <p class="note">Make the story be about a dragon. The model has ${pct(OFF.dragon)} probability of writing ${mono("␣dragon")} here, so sampling alone almost never gets there.</p>
+      <p class="note">Retraining would change the weights. Steering leaves them alone: it changes the vectors the model computes while it runs, a technique called activation addition (ActAdd, Turner et al., 2023).</p></div></div>` });
+
+add({ group: "Steering Vector", short: "Residual stream", title: "The residual stream",
+  lede: "Each token is carried through the model as a vector of 512 numbers. Every block adds its output to this vector instead of replacing it, so the vector is called the residual stream.",
+  hand: `${T} vectors × 512 numbers after block ${B}`,
+  render: () => {
+    const m = Math.max(...D.prompt_norms);
+    return `<div class="cols">
+      <div class="box"><div class="label">Length of each prompt vector after block ${B}</div>
+        <div class="bars">${D.tokens.map((t, i) => `<div class="bar"><span class="t">${esc(t)}</span><span class="track-b"><span class="fill" style="width:${(D.prompt_norms[i] / m) * 100}%"></span></span><span class="n">${D.prompt_norms[i]}</span></div>`).join("")}</div></div>
+      <div class="box"><div class="label">Why this makes steering possible</div>
+        <p class="note">Every block reads the same running vector and adds to it. A vector added from outside after block ${B} therefore looks to blocks ${B + 1} to ${NUM_BLOCKS} as if block ${B} had produced it, and they build on it in the same way.</p>
+        <p class="note">The lengths here, about ${Math.round(Math.min(...D.prompt_norms))} to ${Math.round(m)}, matter later: a steering vector only has an effect if it is comparable in size.</p></div></div>`;
+  } });
+
+add({ group: "Steering Vector", short: `Read "dragon"`, title: `Read the word for the concept`,
+  lede: `The model reads ${D.concept_tokens.dragon[0]} on its own, and the residual stream after block ${B} is taken at that token. This vector is what the model has made of a dragon at that point.`,
+  hand: `the vector of ␣dragon after block ${B} (length ${V.dragon_norm})`,
+  render: () => {
+    const m = absMax(V.dragon, V.girl);
+    return `<div class="box"><div class="label">Residual stream after block ${B}</div>
+      <div class="vrow"><span class="tag">␣dragon</span>${strip(V.dragon, m)}</div>
+      <div class="vrow"><span class="tag">␣girl</span>${strip(V.girl, m)}</div>
+      ${vecLegend}</div>
+      <p class="note">${mono("␣dragon")} is a single token in the vocabulary, so it gives exactly one vector. Its length is ${V.dragon_norm}, close to the ${V.girl_norm} of ${mono("␣girl")} and to the prompt vectors.</p>
+      <p class="note">The two vectors already look different, but they also share a lot: both are nouns that a story names after "a little". Their cosine similarity is ${V.cos}, where 1 would mean the same direction and 0 unrelated ones.</p>` ;
+  } });
+
+add({ group: "Steering Vector", short: `Subtract "girl"`, title: "Keep only what makes it a dragon",
+  lede: "Subtracting the vector of a second word cancels what the two words share. What is left mostly describes what separates a dragon from a girl. This step is optional.",
+  hand: `steering vector = ␣dragon − ␣girl (length ${V.diff_norm})`,
+  render: () => {
+    const m = absMax(V.dragon, V.girl, V.diff);
+    return `<div class="box"><div class="label">One number at a time</div>
+      <div class="vrow"><span class="tag">␣dragon</span>${strip(V.dragon, m)}</div>
+      <div class="op">−</div>
+      <div class="vrow"><span class="tag">␣girl</span>${strip(V.girl, m)}</div>
+      <div class="op">=</div>
+      <div class="vrow sum"><span class="tag">vector</span>${strip(V.diff, m)}</div>
+      ${vecLegend}</div>
+      <p class="note">The difference points away from ${mono("␣girl")} and towards ${mono("␣dragon")} at the same time, which is exactly what this prompt needs, since ${mono("␣girl")} is the model's first choice. Its length is ${V.diff_norm}, about as long as the residual stream itself.</p>` ;
+  } });
+
+add({ group: "Adding the Vector", short: "Prompt only", title: `Add it after block ${B}, at the prompt tokens`,
+  lede: `During generation, the steering vector times a strength of 1 is added to the residual stream after block ${B}, at every prompt token. The new tokens are computed normally.`,
+  hand: `${T} steered vectors after block ${B}`,
+  render: () => {
+    const m = absMax(D.prompt_stream_last, D.steered_last);
+    return `<div class="box"><div class="label">Where the vector is added</div>
+      <div class="pos">${D.tokens.map((t) => `<div class="cellp on"><span>${esc(t)}</span><span class="plus">+ vector</span></div>`).join("")}
+        <div class="cellp off"><span>new</span><span class="plus">unchanged</span></div><div class="cellp off"><span>new</span><span class="plus">unchanged</span></div></div>
+      <p class="note">The new tokens are not steered directly. Attention lets them read the steered prompt, so the story starts out about a dragon and is then told as usual.</p></div>
+      <div class="box"><div class="label">The vector of ${esc(LAST)} after block ${B}</div>
+        <div class="vrow"><span class="tag">before</span>${strip(D.prompt_stream_last, m)}</div>
+        <div class="vrow sum"><span class="tag">+ vector</span>${strip(D.steered_last, m)}</div>
+        ${vecLegend}</div>`;
+  } });
+
+add({ group: "Adding the Vector", short: "Later blocks", title: "The later blocks build on it",
+  lede: `Blocks ${B + 1} to ${NUM_BLOCKS} read the steered vectors as if they were their own. Applying the output layer after each block shows how the guess for the next word changes along the way.`,
+  hand: `next word after "${esc(LAST)}": ␣dragon ${pct(ON.dragon)}`,
+  render: () => {
+    const col = (p, color) => `<div class="col"><span style="height:${p * 100}%; background: var(${color})"></span></div>`;
+    const row = (r, label) => `<div class="box"><div class="label">${label}</div><div class="blocks">${r.lens.map((x, i) => `
+      <div class="vbar"><div class="label">Block ${i + 1}</div>
+        <div class="blocks" style="grid-template-columns: 1fr 1fr; gap: 4px; width: 100%">${col(x.girl, "--accent")}${col(x.dragon, "--warm")}</div>
+        <span class="n">${pct(x.girl)} · ${pct(x.dragon)}</span></div>`).join("")}</div></div>`;
+    return `<div class="legend"><span><i class="sw" style="background: var(--accent)"></i>␣girl</span><span><i class="sw" style="background: var(--warm)"></i>␣dragon</span><span>probability of the next word after each block</span></div>
+      <div class="cols">${row(OFF, "Not steered")}${row(ON, "Steered")}</div>
+      <p class="note">Right after block ${B}, the steered guess for ${mono("␣dragon")} is still only ${pct(ON.lens[0].dragon)}, but ${mono("␣girl")} has already dropped from ${pct(OFF.lens[0].girl)} to ${pct(ON.lens[0].girl)}. Blocks ${B + 1} to ${NUM_BLOCKS} turn the added vector into the word: ${pct(ON.lens[1].dragon)}, ${pct(ON.lens[2].dragon)}, then ${pct(ON.dragon)}. This is why the vector goes in early: added after the last blocks, it has little effect in this model.</p>`;
+  } });
+
+add({ group: "Adding the Vector", short: "Strength", title: "How strong to push",
+  lede: "The strength multiplies the vector before it is added. Too weak and nothing changes; too strong and the vector overwhelms the prompt, so the text breaks.",
+  hand: "",
+  state: { s: 1 },
+  render: (st) => {
+    const r = byS(st.s);
+    steps[cur].hand = `strength ${st.s}: ␣dragon ${pct(r.dragon)} as the next word`;
+    return `<div class="seg" role="group" aria-label="Choose a strength">${D.by_strength.map((x) => `<button type="button" data-s="${x.strength}" class="${x.strength === st.s ? "on" : ""}">${x.strength === 0 ? "0 (off)" : x.strength}</button>`).join("")}</div>
+      <div class="cols">
+        <div class="box"><div class="label">Next word after ${esc(LAST)}, strength ${st.s}</div>${bars(topWords(r), "␣dragon")}</div>
+        <div class="box"><div class="label">Story with seed ${D.seed}, strength ${st.s}</div>${story(r.story)}</div></div>
+      <p class="note">At strength 1 the vector is added at full length, about as long as the residual stream. Up to 0.5, the model still writes a boy or a dog. At 2 and above, even the grammar after "a little" fails. This project uses 1.</p>`;
+  } });
+
+add({ group: "Result", short: "Same seed", title: "The same story, without and with steering",
+  lede: "With the same seed, the two runs draw the same random numbers, so the only difference between them is the added vector.",
+  hand: "two stories, one random seed",
+  render: () => `<div class="cols">
+    <div class="box"><div class="label">Not steered</div>${story(OFF.story)}</div>
+    <div class="box"><div class="label">Steered from ␣girl towards ␣dragon, strength 1</div>${story(ON.story)}</div></div>
+    <p class="note">Both stories use a temperature of 0.7 and top-p of 0.9, and stop at 60 new tokens.</p>` });
+
+add({ group: "Result", short: "How often", title: "How often it works",
+  lede: "Each row wrote 64 stories of 80 new tokens from the same prompt. A story counts when it contains \"dragon\" or \"dragons\".",
+  hand: "92% of stories with a dragon",
+  render: () => {
+    const rows = [["None", 0, 0.67], ["Towards ␣dragon", 0.64, 1.02], ["From ␣girl towards ␣dragon", 0.92, 0.87]];
+    return `<div class="box"><table class="res"><thead><tr><th>Steering</th><th colspan="2">Stories with a dragon</th><th class="n">Fluency</th></tr></thead><tbody>
+      ${rows.map((x, i) => `<tr class="${i === 2 ? "best" : ""}"><td class="mono">${esc(x[0])}</td><td style="width: 40%"><span class="track-b"><span class="fill" style="width:${x[1] * 100}%"></span></span></td><td class="n">${Math.round(x[1] * 100)}%</td><td class="n">${x[2]}</td></tr>`).join("")}
+      </tbody></table></div>
+      <div class="cols">
+        <div class="box"><div class="label">Fluency</div>
+          <p class="note">The unsteered model reads each story, and its average cross-entropy per token is the fluency: how surprised the normal model is by the text. Lower means more natural. Subtracting ${mono("␣girl")} finds more dragons and keeps the text more natural than ${mono("␣dragon")} alone.</p></div>
+        <div class="box"><div class="label">What steering cannot do</div>
+          <p class="note">It only brings out a concept the model has already learned. A goblin failed in every setting: ${mono("␣goblin")} is not even one token, it is split into ${D.concept_tokens.goblin.map(mono).join(" ")}, and the word appears in only 62 of the 2.72 million training stories. A dragon appears 56,220 times.</p></div></div>`;
+  } });
+
+/* Navigation */
+let cur = 0;
+const els = {};
+["track", "stage", "title", "lede", "eyebrow", "inhand", "count", "back", "next"].forEach((id) => (els[id] = document.getElementById(id)));
+
+function buildTrack() {
+  const groups = [];
+  steps.forEach((s, i) => {
+    let g = groups[groups.length - 1];
+    if (!g || g.name !== s.group) groups.push((g = { name: s.group, items: [] }));
+    g.items.push(i);
+  });
+  els.track.innerHTML = groups.map((g) => `<div class="group"><div class="group-label">${esc(g.name)}</div><div class="stations">
+    ${g.items.map((i) => `<button class="station" type="button" data-i="${i}">${esc(steps[i].short)}</button>`).join("")}</div></div>`).join("");
+  els.track.addEventListener("click", (e) => { const b = e.target.closest(".station"); if (b) go(+b.dataset.i); });
+}
+
+function draw(animate) {
+  const s = steps[cur];
+  els.eyebrow.textContent = `${s.group} · step ${cur + 1}`;
+  els.title.textContent = s.title;
+  els.lede.textContent = s.lede;
+  els.stage.innerHTML = s.render(s.state || {});
+  els.inhand.innerHTML = s.hand;
+  if (animate) { els.stage.classList.remove("enter"); void els.stage.offsetWidth; els.stage.classList.add("enter"); }
+  els.count.textContent = `Step ${cur + 1} of ${steps.length}`;
+  els.back.disabled = cur === 0;
+  els.next.textContent = cur === steps.length - 1 ? "Start over" : "Next step";
+  document.querySelectorAll(".station").forEach((b) => {
+    const i = +b.dataset.i;
+    b.classList.toggle("now", i === cur);
+    b.classList.toggle("done", i < cur);
+    if (i === cur) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
+  });
+  const now = document.querySelector(".station.now");
+  if (now && animate) now.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+function go(i) { cur = (i + steps.length) % steps.length; draw(true); }
+
+els.stage.addEventListener("click", (e) => {
+  const st = steps[cur].state;
+  if (!st) return;
+  const sBtn = e.target.closest("[data-s]");
+  if (!sBtn) return;
+  st.s = +sBtn.dataset.s;
+  draw(false);
+});
+els.next.addEventListener("click", () => go(cur + 1));
+els.back.addEventListener("click", () => cur > 0 && go(cur - 1));
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowRight") go(cur + 1);
+  if (e.key === "ArrowLeft" && cur > 0) go(cur - 1);
+});
+
+buildTrack();
+draw(false);
+</script>
+
+</body>
+</html>
