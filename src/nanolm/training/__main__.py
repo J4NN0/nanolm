@@ -8,22 +8,35 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from nanolm.tokenizer.tokenizer import TOKEN_ID_DTYPE
 from nanolm.training import AdamW, clip_gradients, cross_entropy, get_batch, get_lr_cosine_schedule
 from nanolm.training.checkpointing import load_checkpoint, save_checkpoint
 from nanolm.transformer import TransformerLM
 
-DEFAULT_TRAIN_PATH = "data/TinyStoriesV2-GPT4-train.npy"
-DEFAULT_VALID_PATH = "data/TinyStoriesV2-GPT4-valid.npy"
+DEFAULT_TRAIN_PATH = "data/TinyStoriesV2-GPT4-train_10000.bin"
+DEFAULT_VALID_PATH = "data/TinyStoriesV2-GPT4-valid_10000.bin"
+# Not the pipeline's checkpoint, so a training run started by hand never overwrites the trained model
 DEFAULT_CHECKPOINT_PATH = "checkpoints/checkpoint.pt"
+
+# AdamW and gradient clipping: the standard values, which almost every training run keeps
+BETAS = (0.9, 0.95)
+EPS = 1e-8
+WEIGHT_DECAY = 0.1
+MAX_GRAD_NORM = 1.0
+
+# Logging and checkpoints: how often to print and save, which does not change the trained model
+LOG_INTERVAL = 10
+EVAL_INTERVAL = 250
+EVAL_ITERS = 20
+CHECKPOINT_INTERVAL = 1000
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a Transformer language model on token ID files")
 
-    # Data: .npy files, or raw binary files of --data-dtype token IDs
+    # Data: .npy files, or raw binary files of token IDs as written by the tokenizer
     parser.add_argument("--train-path", default=DEFAULT_TRAIN_PATH)
     parser.add_argument("--valid-path", default=DEFAULT_VALID_PATH)
-    parser.add_argument("--data-dtype", default="uint16")
 
     # Model
     parser.add_argument("--vocab-size", type=int, default=10000)
@@ -40,18 +53,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-lr", type=float, default=1e-3)
     parser.add_argument("--min-lr", type=float, default=1e-4)
     parser.add_argument("--warmup-iters", type=int, default=200)
-    parser.add_argument("--beta1", type=float, default=0.9)
-    parser.add_argument("--beta2", type=float, default=0.95)
-    parser.add_argument("--eps", type=float, default=1e-8)
-    parser.add_argument("--weight-decay", type=float, default=0.1)
-    parser.add_argument("--max-grad-norm", type=float, default=1.0)
 
-    # Logging and checkpoints
-    parser.add_argument("--log-interval", type=int, default=10)
-    parser.add_argument("--eval-interval", type=int, default=250)
-    parser.add_argument("--eval-iters", type=int, default=20)
+    # Checkpoints
     parser.add_argument("--checkpoint-path", default=DEFAULT_CHECKPOINT_PATH)
-    parser.add_argument("--checkpoint-interval", type=int, default=1000)
     parser.add_argument("--resume", action="store_true", help="Continue from the checkpoint at --checkpoint-path")
 
     parser.add_argument("--device", default=None, help="e.g. cpu, cuda:0, mps (default: best available)")
@@ -68,22 +72,22 @@ def default_device() -> str:
     return "cpu"
 
 
-def load_tokens(path: str, dtype: str) -> npt.NDArray[np.integer]:
+def load_tokens(path: str) -> npt.NDArray[np.integer]:
     # Memory-mapped: the file stays on disk and only the sampled snippets are read into memory
     if path.endswith(".npy"):
         return np.load(path, mmap_mode="r")
-    return np.memmap(path, dtype=dtype, mode="r")
+    return np.memmap(path, dtype=TOKEN_ID_DTYPE, mode="r")
 
 
 @torch.no_grad()
 def evaluate(model: TransformerLM, data: npt.NDArray[np.integer], args: argparse.Namespace, device: str) -> float:
     model.eval()
     total_loss = 0.0
-    for _ in range(args.eval_iters):
+    for _ in range(EVAL_ITERS):
         inputs, targets = get_batch(data, args.batch_size, args.context_length, device)
         total_loss += cross_entropy(model(inputs), targets).item()
     model.train()
-    return total_loss / args.eval_iters
+    return total_loss / EVAL_ITERS
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -92,8 +96,8 @@ def main(argv: list[str] | None = None) -> None:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    train_data = load_tokens(args.train_path, args.data_dtype)
-    valid_data = load_tokens(args.valid_path, args.data_dtype)
+    train_data = load_tokens(args.train_path)
+    valid_data = load_tokens(args.valid_path)
     print(f"Train tokens: {len(train_data):,}, validation tokens: {len(valid_data):,}, device: {device}")
 
     model = TransformerLM(
@@ -109,9 +113,9 @@ def main(argv: list[str] | None = None) -> None:
     optimizer = AdamW(
         model.parameters(),
         lr=args.max_lr,
-        betas=(args.beta1, args.beta2),
-        eps=args.eps,
-        weight_decay=args.weight_decay,
+        betas=BETAS,
+        eps=EPS,
+        weight_decay=WEIGHT_DECAY,
     )
 
     num_params = 0
@@ -139,22 +143,22 @@ def main(argv: list[str] | None = None) -> None:
 
         optimizer.zero_grad()
         loss.backward()
-        clip_gradients(model.parameters(), args.max_grad_norm)
+        clip_gradients(model.parameters(), MAX_GRAD_NORM)
         optimizer.step()
 
         # Iterations are counted as completed steps, so a checkpoint saved at step n resumes at step n
         step = iteration + 1
         is_last_step = step == args.max_iters
 
-        if step % args.log_interval == 0 or is_last_step:
+        if step % LOG_INTERVAL == 0 or is_last_step:
             elapsed = time.time() - start_time
             print(f"step {step}/{args.max_iters} | train loss {loss.item():.4f} | lr {lr:.2e} | {elapsed:.0f}s")
 
-        if step % args.eval_interval == 0 or is_last_step:
+        if step % EVAL_INTERVAL == 0 or is_last_step:
             valid_loss = evaluate(model, valid_data, args, device)
             print(f"step {step}/{args.max_iters} | validation loss {valid_loss:.4f}")
 
-        if step % args.checkpoint_interval == 0 or is_last_step:
+        if step % CHECKPOINT_INTERVAL == 0 or is_last_step:
             save_checkpoint(model, optimizer, step, args.checkpoint_path)
             print(f"Saved checkpoint to {args.checkpoint_path}")
 
