@@ -1,6 +1,6 @@
 # NanoLM
 
-A language model built from scratch.
+A (not large) language model built from scratch.
 
 ## Table of Contents
 
