@@ -1022,4 +1022,3 @@ On an Apple M5 laptop with the default settings, the first two stages take about
 - [Stanford CS336: Language Modeling from Scratch](https://cs336.stanford.edu/)
 - [Hugging Face Datasets](https://huggingface.co/datasets)
 - [Steering Language Models With Activation Engineering (Turner et al., 2023)](https://arxiv.org/abs/2308.10248)
-- [Steering Llama 2 via Contrastive Activation Addition (Rimsky et al., 2024)](https://arxiv.org/abs/2312.06681)
