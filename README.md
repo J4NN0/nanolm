@@ -2,6 +2,19 @@
 
 A (not large) language model built from scratch.
 
+Every part is written by hand, without PyTorch's ready-made layers, following [Stanford's CS336 course](#resources). The model is trained on TinyStories, a collection of short, simple stories for children:
+
+- 22.7 million parameters, the numbers the model learns;
+- A vocabulary of 10,000 pieces of text;
+- About 70 minutes of training on an Apple M5 laptop, reading about 41 million pieces;
+- A validation loss of 1.66 on stories it has never seen: on average, it gives the correct next piece about a 1-in-5 chance, out of 10,000 options.
+
+A story it wrote, starting from "Once upon a time":
+
+> Once upon a time, in a small town, there lived a little boy named Tim. Tim was an honest boy who always told the truth. [...] But then, Tim saw a big box near the road. He wanted to open it, but it was too high for him. He tried to jump and reach the box, but he couldn't. Tim was sad and started to cry.
+>
+> His mom heard him cry and came to help. She said, "Tim, you should not be so stubborn. Let's go inside and find a grown-up to help you." Tim learned that it is important to listen to his mom and stay close to home.
+
 ## Table of Contents
 
 - [Usage](#usage)
