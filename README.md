@@ -45,6 +45,7 @@ A language model built from scratch.
   - [Steering Vector](#steering-vector)
   - [Adding the Vector](#adding-the-vector)
   - [Results](#results)
+  - [Other Approaches](#other-approaches)
 - [Putting It Together](#putting-it-together)
 - [Resources](#resources)
 
@@ -120,7 +121,7 @@ uv run python -m nanolm.steering \
   --toward "dragon"
 ```
 
-Without steering, the model continues this prompt with a dragon in none of 64 stories. With this command, 64% of the stories are about a dragon.
+Without steering, the model continues this prompt with a dragon in none of 64 stories. With this command, 73% of the stories are about a dragon.
 
 The steering options:
 
@@ -152,7 +153,7 @@ uv run python -m nanolm.steering \
   --compare
 ```
 
-Steering away from girl makes the direction cleaner: 92% of the stories are about a dragon instead of 64%, and the text is more natural. See [Steering](#steering) for how it works.
+Steering away from girl makes the direction cleaner: 89% of the stories are about a dragon instead of 73%. See [Steering](#steering) for how it works.
 
 ### Profile the Tokenizer
 
@@ -922,27 +923,54 @@ With the full distribution the model sometimes picks unlikely tokens and produce
 
 ## Steering
 
-The trained model has habits of its own. When it continues `"Once upon a time, there was a little"`, the next word is `"girl"` 37% of the time and `"boy"` 34% of the time. *Steering* pushes the generated text towards a chosen concept, such as a dragon, while the model runs. The weights stay the same, and nothing is retrained.
+The trained model has habits of its own. When it continues `"Once upon a time, there was a little"`, the next word is `"girl"` 37% of the time and `"boy"` 34% of the time. Steering pushes the generated text towards a chosen concept, such as a dragon, while the model runs and without changing its weights.
 
-This project uses *activation addition* (ActAdd, Turner et al., 2023): it finds a vector inside the model that stands for the concept, and adds it to the model's vectors during generation.
+This project uses **activation addition**: it finds a vector that stands for the concept, and adds it to the vectors that the model computes while it reads the prompt. To do that, three questions need an answer:
+
+1. Where inside the model can a vector be added so that the rest of the model uses it?
+2. Which vector stands for the concept?
+3. After which block, at which tokens, and how strongly should it be added?
 
 ### Residual Stream
 
-Each token is carried through the model as a vector of `d_model` numbers. The embedding creates it, and every block adds its output to it instead of replacing it (see [Transformer Block](#transformer-block)). This running vector is called the *residual stream*. After the last block, it is turned into the logits for the next token.
+To steer the model from the inside, a vector has to be added at a place that holds what the model currently knows about each token, and that every later computation reads. The residual connections of the Transformer provide such a place.
 
-Since every block reads the same vector and adds to it, a vector added from outside after one block looks to the following blocks as if an earlier block had produced it. They build on it in the same way.
+Each token is carried through the model as a vector of `d_model` numbers. The embedding creates it, and every block adds its output to it instead of replacing it (see [Transformer Block](#transformer-block)). This running vector is called the *residual stream*. Everything the model has worked out about a token so far is stored in it, and after the last block it is turned into the logits for the next token.
+
+This makes the residual stream the place to steer. Since every block reads the same vector and adds to it, a vector added from outside after one block looks to the following blocks as if an earlier block had produced it. They build on it in the same way, and the change reaches the logits.
 
 ### Steering Vector
 
-To find the vector for a concept, the model reads the word for it, `" dragon"`, and the residual stream after block 1 is taken at that token. This is the *steering vector*.
+The residual stream also tells where to find a vector for a concept. When the model reads a word, it stores what it knows about that word in the residual stream at that token, in the same form that the later blocks expect. The model therefore already computes a vector for the concept, and it only has to be read out.
+
+The vector is computed once, before generation, and separately from the prompt. The word for the concept, `" dragon"`, is given to the model on its own, as a text of a single token. The vector of that token after block 1 is kept, and the rest of the model's output is ignored. This vector is the *steering vector*: the word's embedding plus what block 1 added to it. Since the word has no other tokens around it, the vector describes the word without any context.
 
 That vector also contains what `" dragon"` shares with every other word in the same place, such as being a noun. To keep only the concept, the model can also read a second word, such as `" girl"`, and its vector is subtracted from the first. What both words share cancels out, and what is left mostly describes what separates a dragon from a girl.
 
 ### Adding the Vector
 
-During generation, the steering vector is multiplied by a *strength* and added to the residual stream after block 1, at the prompt tokens only. The new tokens are computed normally, but attention lets them read the steered prompt, so the story starts out about a dragon and is then told as usual.
+With the steering vector found, three choices remain. Each was tested by writing 64 stories of 80 new tokens from the same prompt, and counting the stories that contain a dragon, as in [Results](#results).
 
-The vector is added after block 1 because the later blocks can then build on it: a vector added after the last blocks has little effect in this model. The strength is set to `1`, since the vector is already about as long as the residual stream itself. Much weaker, and nothing changes; much stronger, and the text breaks.
+- After which block: the vector is added after block 1 of 4, the same place where it was read, so the later blocks receive it in the form they expect. Block 1 is early enough that three blocks are left to turn it into a different next word. Added after a later block, it finds fewer dragons, though deeper is not simply worse: block 3 does better than block 2. After block 4, no blocks are left to build on the vector, and it almost never works.
+
+| Vector read and added after | Stories with a dragon |
+|---|---|
+| Block 1 | 89% |
+| Block 2 | 45% |
+| Block 3 | 69% |
+| Block 4 | 9% |
+
+- At which tokens: the vector is added at all the prompt tokens, and only there. The prompt is what tells the model what the story is about, and every new token reads it through attention. Steering the prompt is therefore enough for the story to start out about a dragon, while the new tokens are computed normally, so the rest of the story is told as usual. One token is not enough, not even `" little"`, the token that makes the prediction: attention mixes what a token reads from all the tokens before it, so a change at a single token is too diluted to reach the prediction. Adding the vector at every token, including the new ones, finds a dragon in every story, but the vector is then added to each word as it is written, and the text falls apart: `"He lived lived in a small. The roared to himself, lived in the dark."` At half the strength, it finds fewer dragons than steering only the prompt.
+
+| Vector added after block 1 at | Stories with a dragon |
+|---|---|
+| Only `"Once"` | 0% |
+| Only `" little"` | 0% |
+| All prompt tokens | 89% |
+| Every token, strength 1 | 100% |
+| Every token, strength 0.5 | 70% |
+
+- How strongly: before it is added, the vector is multiplied by a number called the *strength*. The strength is set to `1`, since the vector is already about as long as the residual stream vectors of the prompt. Much weaker, and nothing changes; much stronger, and the vector drowns out the prompt, so the text breaks.
 
 The same seed, without and with steering from `" girl"` towards `" dragon"`:
 
@@ -956,15 +984,25 @@ steered       Once upon a time, there was a little dragon. He lived in a big, gr
 
 ### Results
 
-Each row wrote 64 stories of 80 new tokens from `"Once upon a time, there was a little"`, with a temperature of `0.7` and top-p of `0.9`. A story counts when it contains `"dragon"` or `"dragons"`. To measure how natural the text is, the unsteered model reads each story, and its average cross-entropy per token is the *fluency*: how surprised the normal model is by the text. Lower means more natural.
+Each row wrote 64 stories of 80 new tokens from `"Once upon a time, there was a little"`, with a temperature of `0.7` and top-p of `0.9`. A story counts when it contains `"dragon"` or `"dragons"`.
 
-| Steering | Stories with a dragon | Fluency |
-|---|---|---|
-| None | 0% | 0.67 |
-| Towards `" dragon"` | 64% | 1.02 |
-| From `" girl"` towards `" dragon"` | 92% | 0.87 |
+| Steering | Stories with a dragon |
+|---|---|
+| None | 0% |
+| Towards `" dragon"` | 73% |
+| From `" girl"` towards `" dragon"` | 89% |
 
 Steering can only make the model use a concept it has already learned. A goblin failed in every setting: the word appears in only 62 of the 2.72 million training stories, so the model never learned what a goblin is. A dragon appears 56,220 times.
+
+### Other Approaches
+
+Activation addition is one of several ways to steer a model. They differ in where the change is made:
+
+- **Prompting** changes the input: the prompt is written as `"Once upon a time, there was a little dragon"`. It is the simplest, but it fixes the exact words and cannot be made weaker or stronger.
+- **Logit bias** changes the output: a fixed amount is added to the logit of `" dragon"` before sampling. It needs nothing from inside the model, but it raises one token rather than a concept, so related words such as `" wings"` or `" fire"` are not raised with it.
+- **Averaged steering vectors** change the residual stream like activation addition, but take many pairs of prompts that differ only in the concept, and average the differences of their residual streams. A single pair also carries whatever is special about those two words; averaging keeps only what all pairs share. This is how *contrastive activation addition* finds its vectors.
+- **Sparse autoencoder features** also change the residual stream. A second, small model is trained to split residual stream vectors into many features, each of which tends to stand for one thing, and the direction of the feature for dragons is added.
+- **Fine-tuning** changes the weights: the model is trained further on stories about dragons. The change is permanent and needs data and training time, instead of a single vector.
 
 ## Putting It Together
 
@@ -984,3 +1022,4 @@ On an Apple M5 laptop with the default settings, the first two stages take about
 - [Stanford CS336: Language Modeling from Scratch](https://cs336.stanford.edu/)
 - [Hugging Face Datasets](https://huggingface.co/datasets)
 - [Steering Language Models With Activation Engineering (Turner et al., 2023)](https://arxiv.org/abs/2308.10248)
+- [Steering Llama 2 via Contrastive Activation Addition (Rimsky et al., 2024)](https://arxiv.org/abs/2312.06681)

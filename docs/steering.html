@@ -214,6 +214,11 @@ header h1 .was { color: var(--muted); text-decoration: line-through; text-decora
 .pos .cellp.on { border-color: var(--warm); box-shadow: inset 0 0 0 1px var(--warm); }
 .pos .cellp .plus { font-size: 11px; color: var(--warm); font-weight: 600; }
 .pos .cellp.off .plus { color: var(--muted); font-weight: 400; }
+.eq { font-family: var(--mono); font-size: 13.5px; line-height: 1.9; white-space: pre; overflow-x: auto; margin: 0; }
+.eq .hot { color: var(--warm); font-weight: 600; }
+.eq .dim { color: var(--muted); }
+.qs { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.qs .where { color: var(--muted); font-size: 12.5px; }
 .story { font-family: var(--body); font-size: 16px; line-height: 1.5; margin: 0; white-space: pre-wrap; }
 .story .p { color: var(--muted); }
 .story .hit { color: var(--warm); font-weight: 700; }
@@ -244,7 +249,7 @@ table.res tr.best .fill { background: var(--warm); }
   <header>
     <a class="home" href="index.html">← All walkthroughs</a>
     <h1 id="headline"></h1>
-    <p>Follow how the model is pushed towards a concept while it writes, without changing a single weight. All numbers come from the nanolm model (22.7 million weights, 10,000-token vocabulary) after the full training run of 5,000 steps on TinyStories, computed on the CPU.</p>
+    <p>Follow how the model is pushed towards a concept while it writes, without changing a single weight. All numbers come from the nanolm model (22.7 million weights, 10,000-token vocabulary) after the full training run of 5,000 steps on TinyStories. The single examples were computed on the CPU, and the counts over 64 stories on an Apple GPU (MPS).</p>
   </header>
 
   <div class="track-scroll"><nav class="track" id="track" aria-label="Steps"></nav></div>
@@ -268,7 +273,7 @@ table.res tr.best .fill { background: var(--warm); }
 </div>
 
 <script>
-const D = {"prompt": "Once upon a time, there was a little", "tokens": ["Once", "␣upon", "␣a", "␣time", ",", "␣there", "␣was", "␣a", "␣little"], "ids": [430, 439, 259, 398, 44, 401, 283, 259, 390], "layer": 1, "num_blocks": 4, "concept_tokens": {"dragon": ["␣dragon"], "girl": ["␣girl"], "goblin": ["␣go", "bl", "in"]}, "vectors": {"dragon": [-0.478, 2.688, 1.614, -0.819, -0.837, 1.303, -1.576, 0.549, -0.221, 0.55, 0.131, 0.725, -0.139, -0.72, -0.248, 1.397, 0.67, 1.079, -0.87, -0.745, 0.349, -0.416, -2.539, 0.059, 0.847, -0.659, -1.214, 0.25, 0.746, 0.678, 2.623, 1.279, 0.406, -0.038, -0.148, -1.398, 3.971, -0.453, -2.35, -1.258, 1.768, -0.943, -0.658, 2.25, -0.227, 0.239, -0.183, 1.419], "girl": [-1.057, -1.319, 0.545, -1.599, 0.442, 0.387, -1.425, -0.397, 3.216, -0.803, 1.3, 0.005, -0.568, -0.921, 0.023, 0.09, 0.228, 1.453, 0.017, -1.138, -0.208, -0.443, -3.57, -1.842, 1.337, -0.139, -0.365, -0.769, -2.352, 1.176, -2.79, 0.634, 1.87, 0.568, -2.108, -0.41, 0.73, -1.459, 0.932, -0.363, 0.823, -0.544, 1.624, 0.024, -0.797, -1.529, 1.218, 1.032], "diff": [0.58, 4.007, 1.069, 0.78, -1.279, 0.916, -0.151, 0.945, -3.437, 1.352, -1.169, 0.72, 0.429, 0.201, -0.271, 1.307, 0.442, -0.374, -0.887, 0.393, 0.557, 0.027, 1.032, 1.901, -0.49, -0.519, -0.849, 1.019, 3.098, -0.498, 5.413, 0.645, -1.464, -0.606, 1.959, -0.989, 3.241, 1.005, -3.282, -0.895, 0.945, -0.4, -2.281, 2.227, 0.57, 1.768, -1.401, 0.387], "dragon_norm": 30.0, "girl_norm": 29.8, "diff_norm": 39.0, "cos": 0.15}, "prompt_norms": [32.2, 39.8, 26.2, 24.9, 22.9, 40.8, 27.2, 27.7, 27.3], "prompt_stream_last": [-2.316, -0.233, 2.08, 1.001, -0.277, 0.151, 0.78, 0.483, -1.518, -0.17, -1.292, -0.928, 1.28, 0.437, -1.104, -0.043, 0.229, -0.04, -0.719, -0.767, 0.311, -0.466, -1.86, 1.762, 0.292, 0.582, -1.596, -0.995, 1.15, -0.696, -0.207, -0.316, 0.672, -0.807, 3.04, 1.141, 0.5, 0.727, 0.64, -0.86, -0.951, 0.054, 0.28, 0.831, 1.786, 0.912, -2.237, 0.687], "steered_last": [-1.736, 3.774, 3.149, 1.781, -1.556, 1.067, 0.629, 1.428, -4.956, 1.182, -2.461, -0.207, 1.709, 0.639, -1.376, 1.264, 0.67, -0.414, -1.606, -0.374, 0.868, -0.439, -0.828, 3.662, -0.198, 0.062, -2.445, 0.023, 4.248, -1.194, 5.206, 0.329, -0.792, -1.413, 4.999, 0.152, 3.741, 1.733, -2.642, -1.755, -0.006, -0.345, -2.001, 3.058, 2.356, 2.681, -3.638, 1.074], "by_strength": [{"top": [{"token": "␣girl", "p": 0.3654}, {"token": "␣boy", "p": 0.3444}, {"token": "␣dog", "p": 0.0631}, {"token": "␣bird", "p": 0.0269}, {"token": "␣cat", "p": 0.0151}, {"token": "␣bunny", "p": 0.0137}, {"token": "␣fish", "p": 0.0079}, {"token": "␣car", "p": 0.0071}], "dragon": 0.0007, "lens": [{"dragon": 0.0, "girl": 0.1311}, {"dragon": 0.0, "girl": 0.2623}, {"dragon": 0.0, "girl": 0.3489}, {"dragon": 0.0007, "girl": 0.3654}], "strength": 0, "story": " boy named Tim. Tim was very impatient. He wanted to go outside and play. His mom said, \"Wait, Tim! I am busy. You can do it!\" Tim was sad, but he wanted to play outside.\nTim saw his friend, Sue, playing with a ball."}, {"top": [{"token": "␣girl", "p": 0.269}, {"token": "␣boy", "p": 0.2626}, {"token": "␣dog", "p": 0.0807}, {"token": "␣bird", "p": 0.0472}, {"token": "␣cat", "p": 0.0247}, {"token": "␣bunny", "p": 0.0238}, {"token": "␣fish", "p": 0.0206}, {"token": "␣mouse", "p": 0.0189}], "dragon": 0.004, "lens": [{"dragon": 0.0001, "girl": 0.1117}, {"dragon": 0.0, "girl": 0.1905}, {"dragon": 0.0002, "girl": 0.2221}, {"dragon": 0.004, "girl": 0.269}], "strength": 0.25, "story": " boy named Tim. Tim was very impatient. He wanted to go outside and play with his ball.\nTim asked his mom, \"Mom, can I go outside and play?\" His mom said, \"Yes, but be careful.\" Tim was very happy."}, {"top": [{"token": "␣boy", "p": 0.1423}, {"token": "␣girl", "p": 0.1411}, {"token": "␣bird", "p": 0.0819}, {"token": "␣dog", "p": 0.0637}, {"token": "␣mouse", "p": 0.0506}, {"token": "␣dragon", "p": 0.0378}, {"token": "␣fish", "p": 0.0372}, {"token": "␣cat", "p": 0.0334}], "dragon": 0.0378, "lens": [{"dragon": 0.0001, "girl": 0.0426}, {"dragon": 0.0002, "girl": 0.0721}, {"dragon": 0.0036, "girl": 0.0704}, {"dragon": 0.0378, "girl": 0.1411}], "strength": 0.5, "story": " dog named Max. Max was a very persistent dog. He loved to play with his friends in the park. One day, Max saw a big, red ball. He wanted to play with it.\nMax took the big, red ball and ran to the big, red ball."}, {"top": [{"token": "␣dragon", "p": 0.3303}, {"token": ".", "p": 0.0611}, {"token": ",", "p": 0.032}, {"token": "␣and", "p": 0.0225}, {"token": "␣mouse", "p": 0.0152}, {"token": "␣cave", "p": 0.0141}, {"token": "␣bird", "p": 0.0123}, {"token": "␣lived", "p": 0.0113}], "dragon": 0.3303, "lens": [{"dragon": 0.0002, "girl": 0.0044}, {"dragon": 0.001, "girl": 0.0031}, {"dragon": 0.0559, "girl": 0.0018}, {"dragon": 0.3303, "girl": 0.0008}], "strength": 1, "story": " dragon. He lived in a big cave with his family. The dragon was very strong and kind.\nOne day, the dragon went for a walk in the forest. He saw a big tree and decided to climb it. As he climbed, he met a little bird."}, {"top": [{"token": "␣roared", "p": 0.0552}, {"token": "␣dragon", "p": 0.0542}, {"token": ".", "p": 0.0253}, {"token": "␣lived", "p": 0.0202}, {"token": "!", "p": 0.0136}, {"token": "␣fight", "p": 0.0117}, {"token": "␣bit", "p": 0.0114}, {"token": "␣and", "p": 0.0092}], "dragon": 0.0542, "lens": [{"dragon": 0.0001, "girl": 0.0003}, {"dragon": 0.0006, "girl": 0.0002}, {"dragon": 0.0171, "girl": 0.0001}, {"dragon": 0.0542, "girl": 0.0}], "strength": 2, "story": " lived in a small town. The town was very happy because it had a big heart and kind heart. The town was always there to help people, so everyone would watch them from above.\nOne day, a little boy named Tim came to the town."}, {"top": [{"token": "␣roared", "p": 0.0752}, {"token": "ing", "p": 0.0089}, {"token": "␣lived", "p": 0.0083}, {"token": "␣grew", "p": 0.0082}, {"token": "␣himself", "p": 0.0079}, {"token": "s", "p": 0.0077}, {"token": "␣fight", "p": 0.0067}, {"token": "␣gone", "p": 0.0062}], "dragon": 0.0041, "lens": [{"dragon": 0.0001, "girl": 0.0001}, {"dragon": 0.0003, "girl": 0.0}, {"dragon": 0.0019, "girl": 0.0}, {"dragon": 0.0041, "girl": 0.0}], "strength": 4, "story": " landed on the ground. The people were very surprised. They did not know what to do.\nA little girl named Lily walked up to the dragon. She said, \"Hi, dragon! Can I live with you?\" The dragon said, \"Yes, Lily! Let's be friends!\""}], "toward_only": {"top": [{"token": ".", "p": 0.6447}, {"token": "␣named", "p": 0.178}, {"token": "␣who", "p": 0.0289}, {"token": "␣and", "p": 0.0207}, {"token": "␣in", "p": 0.0188}, {"token": ",", "p": 0.0154}, {"token": "!", "p": 0.0111}, {"token": "␣lived", "p": 0.0076}], "dragon": 0.0044, "lens": [{"dragon": 0.0001, "girl": 0.0091}, {"dragon": 0.0003, "girl": 0.0344}, {"dragon": 0.0104, "girl": 0.0734}, {"dragon": 0.0044, "girl": 0.004}], "story": ". He lived in a big house with a nice family. The family had a big dog, a small cat, and a small dog. The big dog was very nice and always helped the little cat.\nOne day, the big dog was feeling very tired."}, "seed": 3};
+const D = {"prompt": "Once upon a time, there was a little", "tokens": ["Once", "␣upon", "␣a", "␣time", ",", "␣there", "␣was", "␣a", "␣little"], "ids": [430, 439, 259, 398, 44, 401, 283, 259, 390], "layer": 1, "num_blocks": 4, "concept_tokens": {"dragon": ["␣dragon"], "girl": ["␣girl"], "goblin": ["␣go", "bl", "in"]}, "vectors": {"dragon": [-0.478, 2.688, 1.614, -0.819, -0.837, 1.303, -1.576, 0.549, -0.221, 0.55, 0.131, 0.725, -0.139, -0.72, -0.248, 1.397, 0.67, 1.079, -0.87, -0.745, 0.349, -0.416, -2.539, 0.059, 0.847, -0.659, -1.214, 0.25, 0.746, 0.678, 2.623, 1.279, 0.406, -0.038, -0.148, -1.398, 3.971, -0.453, -2.35, -1.258, 1.768, -0.943, -0.658, 2.25, -0.227, 0.239, -0.183, 1.419], "girl": [-1.057, -1.319, 0.545, -1.599, 0.442, 0.387, -1.425, -0.397, 3.216, -0.803, 1.3, 0.005, -0.568, -0.921, 0.023, 0.09, 0.228, 1.453, 0.017, -1.138, -0.208, -0.443, -3.57, -1.842, 1.337, -0.139, -0.365, -0.769, -2.352, 1.176, -2.79, 0.634, 1.87, 0.568, -2.108, -0.41, 0.73, -1.459, 0.932, -0.363, 0.823, -0.544, 1.624, 0.024, -0.797, -1.529, 1.218, 1.032], "diff": [0.58, 4.007, 1.069, 0.78, -1.279, 0.916, -0.151, 0.945, -3.437, 1.352, -1.169, 0.72, 0.429, 0.201, -0.271, 1.307, 0.442, -0.374, -0.887, 0.393, 0.557, 0.027, 1.032, 1.901, -0.49, -0.519, -0.849, 1.019, 3.098, -0.498, 5.413, 0.645, -1.464, -0.606, 1.959, -0.989, 3.241, 1.005, -3.282, -0.895, 0.945, -0.4, -2.281, 2.227, 0.57, 1.768, -1.401, 0.387], "dragon_norm": 30.0, "girl_norm": 29.8, "diff_norm": 39.0, "cos": 0.15}, "prompt_norms": [32.2, 39.8, 26.2, 24.9, 22.9, 40.8, 27.2, 27.7, 27.3], "prompt_stream_last": [-2.316, -0.233, 2.08, 1.001, -0.277, 0.151, 0.78, 0.483, -1.518, -0.17, -1.292, -0.928, 1.28, 0.437, -1.104, -0.043, 0.229, -0.04, -0.719, -0.767, 0.311, -0.466, -1.86, 1.762, 0.292, 0.582, -1.596, -0.995, 1.15, -0.696, -0.207, -0.316, 0.672, -0.807, 3.04, 1.141, 0.5, 0.727, 0.64, -0.86, -0.951, 0.054, 0.28, 0.831, 1.786, 0.912, -2.237, 0.687], "steered_last": [-1.736, 3.774, 3.149, 1.781, -1.556, 1.067, 0.629, 1.428, -4.956, 1.182, -2.461, -0.207, 1.709, 0.639, -1.376, 1.264, 0.67, -0.414, -1.606, -0.374, 0.868, -0.439, -0.828, 3.662, -0.198, 0.062, -2.445, 0.023, 4.248, -1.194, 5.206, 0.329, -0.792, -1.413, 4.999, 0.152, 3.741, 1.733, -2.642, -1.755, -0.006, -0.345, -2.001, 3.058, 2.356, 2.681, -3.638, 1.074], "by_strength": [{"top": [{"token": "␣girl", "p": 0.3654}, {"token": "␣boy", "p": 0.3444}, {"token": "␣dog", "p": 0.0631}, {"token": "␣bird", "p": 0.0269}, {"token": "␣cat", "p": 0.0151}, {"token": "␣bunny", "p": 0.0137}, {"token": "␣fish", "p": 0.0079}, {"token": "␣car", "p": 0.0071}], "dragon": 0.0007, "lens": [{"dragon": 0.0, "girl": 0.1311}, {"dragon": 0.0, "girl": 0.2623}, {"dragon": 0.0, "girl": 0.3489}, {"dragon": 0.0007, "girl": 0.3654}], "strength": 0, "story": " boy named Tim. Tim was very impatient. He wanted to go outside and play. His mom said, \"Wait, Tim! I am busy. You can do it!\" Tim was sad, but he wanted to play outside.\nTim saw his friend, Sue, playing with a ball."}, {"top": [{"token": "␣girl", "p": 0.269}, {"token": "␣boy", "p": 0.2626}, {"token": "␣dog", "p": 0.0807}, {"token": "␣bird", "p": 0.0472}, {"token": "␣cat", "p": 0.0247}, {"token": "␣bunny", "p": 0.0238}, {"token": "␣fish", "p": 0.0206}, {"token": "␣mouse", "p": 0.0189}], "dragon": 0.004, "lens": [{"dragon": 0.0001, "girl": 0.1117}, {"dragon": 0.0, "girl": 0.1905}, {"dragon": 0.0002, "girl": 0.2221}, {"dragon": 0.004, "girl": 0.269}], "strength": 0.25, "story": " boy named Tim. Tim was very impatient. He wanted to go outside and play with his ball.\nTim asked his mom, \"Mom, can I go outside and play?\" His mom said, \"Yes, but be careful.\" Tim was very happy."}, {"top": [{"token": "␣boy", "p": 0.1423}, {"token": "␣girl", "p": 0.1411}, {"token": "␣bird", "p": 0.0819}, {"token": "␣dog", "p": 0.0637}, {"token": "␣mouse", "p": 0.0506}, {"token": "␣dragon", "p": 0.0378}, {"token": "␣fish", "p": 0.0372}, {"token": "␣cat", "p": 0.0334}], "dragon": 0.0378, "lens": [{"dragon": 0.0001, "girl": 0.0426}, {"dragon": 0.0002, "girl": 0.0721}, {"dragon": 0.0036, "girl": 0.0704}, {"dragon": 0.0378, "girl": 0.1411}], "strength": 0.5, "story": " dog named Max. Max was a very persistent dog. He loved to play with his friends in the park. One day, Max saw a big, red ball. He wanted to play with it.\nMax took the big, red ball and ran to the big, red ball."}, {"top": [{"token": "␣dragon", "p": 0.3303}, {"token": ".", "p": 0.0611}, {"token": ",", "p": 0.032}, {"token": "␣and", "p": 0.0225}, {"token": "␣mouse", "p": 0.0152}, {"token": "␣cave", "p": 0.0141}, {"token": "␣bird", "p": 0.0123}, {"token": "␣lived", "p": 0.0113}], "dragon": 0.3303, "lens": [{"dragon": 0.0002, "girl": 0.0044}, {"dragon": 0.001, "girl": 0.0031}, {"dragon": 0.0559, "girl": 0.0018}, {"dragon": 0.3303, "girl": 0.0008}], "strength": 1, "story": " dragon. He lived in a big cave with his family. The dragon was very strong and kind.\nOne day, the dragon went for a walk in the forest. He saw a big tree and decided to climb it. As he climbed, he met a little bird."}, {"top": [{"token": "␣roared", "p": 0.0752}, {"token": "ing", "p": 0.0089}, {"token": "␣lived", "p": 0.0083}, {"token": "␣grew", "p": 0.0082}, {"token": "␣himself", "p": 0.0079}, {"token": "s", "p": 0.0077}, {"token": "␣fight", "p": 0.0067}, {"token": "␣gone", "p": 0.0062}], "dragon": 0.0041, "lens": [{"dragon": 0.0001, "girl": 0.0001}, {"dragon": 0.0003, "girl": 0.0}, {"dragon": 0.0019, "girl": 0.0}, {"dragon": 0.0041, "girl": 0.0}], "strength": 4, "story": " landed on the ground. The people were very surprised. They did not know what to do.\nA little girl named Lily walked up to the dragon. She said, \"Hi, dragon! Can I live with you?\" The dragon said, \"Yes, Lily! Let's be friends!\""}, {"top": [{"token": "␣roared", "p": 0.0354}, {"token": "ing", "p": 0.0182}, {"token": "s", "p": 0.0081}, {"token": "␣grew", "p": 0.0052}, {"token": "␣station", "p": 0.0041}, {"token": "␣join", "p": 0.0039}, {"token": "␣envious", "p": 0.0037}, {"token": "␣himself", "p": 0.0036}], "dragon": 0.0004, "lens": [{"dragon": 0.0001, "girl": 0.0}, {"dragon": 0.0001, "girl": 0.0}, {"dragon": 0.0003, "girl": 0.0}, {"dragon": 0.0004, "girl": 0.0}], "strength": 10, "story": " landed on the ground. The tree was very tall and strong.\nA little boy named Tim came to the tree. He saw the tree and wanted to climb it. Tim said, \"I want to climb the tree!\" The tree said, \"Be careful, Tim! Don't fall!\""}], "toward_only": {"top": [{"token": ".", "p": 0.6447}, {"token": "␣named", "p": 0.178}, {"token": "␣who", "p": 0.0289}, {"token": "␣and", "p": 0.0207}, {"token": "␣in", "p": 0.0188}, {"token": ",", "p": 0.0154}, {"token": "!", "p": 0.0111}, {"token": "␣lived", "p": 0.0076}], "dragon": 0.0044, "lens": [{"dragon": 0.0001, "girl": 0.0091}, {"dragon": 0.0003, "girl": 0.0344}, {"dragon": 0.0104, "girl": 0.0734}, {"dragon": 0.0044, "girl": 0.004}], "story": ". He lived in a big house with a nice family. The family had a big dog, a small cat, and a small dog. The big dog was very nice and always helped the little cat.\nOne day, the big dog was feeling very tired."}, "seed": 3, "stories_n": 64, "by_positions": [{"label": "only Once", "hits": 0}, {"label": "only ␣little", "hits": 0}, {"label": "all prompt tokens", "hits": 57}, {"label": "every token, strength 1", "hits": 64}, {"label": "every token, strength 0.5", "hits": 45}], "by_block": [{"block": 1, "hits": 57}, {"block": 2, "hits": 29}, {"block": 3, "hits": 44}, {"block": 4, "hits": 6}], "results": [{"label": "None", "hits": 0}, {"label": "Towards ␣dragon", "hits": 47}, {"label": "From ␣girl towards ␣dragon", "hits": 57}]};
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pct = (p) => (p * 100).toFixed(p >= 0.1 ? 0 : p >= 0.001 ? 1 : 2) + "%";
@@ -311,8 +316,19 @@ function story(text) {
   return `<p class="story"><span class="p">${esc(D.prompt)}</span>${safe}</p>`;
 }
 
+// Rows of [label, stories with a dragon], drawn like the results table; `best` is highlighted
+const share = (hits) => Math.round((hits / D.stories_n) * 100) + "%";
+function hitsTable(head, rows, best) {
+  return `<table class="res"><thead><tr><th>${head}</th><th colspan="2">Stories with a dragon</th></tr></thead><tbody>
+    ${rows.map((x, i) => `<tr class="${i === best ? "best" : ""}"><td class="mono">${esc(x[0])}</td><td style="width: 40%"><span class="track-b"><span class="fill" style="width:${(x[1] / D.stories_n) * 100}%"></span></span></td><td class="n">${share(x[1])}</td></tr>`).join("")}
+    </tbody></table>`;
+}
+const storiesNote = `Each row wrote ${D.stories_n} stories of 80 new tokens.`;
+
 const steps = [];
 const add = (s) => steps.push(s);
+
+const SUB = (n) => String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[+c]).join("");
 
 add({ group: "The Habit", short: "Prompt", title: "What the model wants to write",
   lede: "Steering starts from a model with habits of its own. After this prompt it almost always writes a girl or a boy, and a dragon is very unlikely.",
@@ -321,36 +337,61 @@ add({ group: "The Habit", short: "Prompt", title: "What the model wants to write
     <div class="box"><div class="label">Next word after ${esc(LAST)}, not steered</div>${bars(topWords(OFF), "␣girl")}</div>
     <div class="box"><div class="label">The goal</div>
       <p class="note">Make the story be about a dragon. The model has ${pct(OFF.dragon)} probability of writing ${mono("␣dragon")} here, so sampling alone almost never gets there.</p>
-      <p class="note">Retraining would change the weights. Steering leaves them alone: it changes the vectors the model computes while it runs, a technique called activation addition (ActAdd, Turner et al., 2023).</p></div></div>` });
+      <p class="note">Retraining would change the weights. Steering leaves them alone: while the model reads the prompt, a vector that stands for the concept is added to the vectors the model computes. This is called activation addition (ActAdd, Turner et al., 2023).</p></div></div>
+    <div class="box"><div class="label">Three questions, answered in the next steps</div>
+      <ol class="qs note">
+        <li>Where inside the model can a vector be added so that the rest of the model uses it? <span class="where">Residual stream</span></li>
+        <li>Which vector stands for a dragon? <span class="where">Read "dragon", Subtract "girl"</span></li>
+        <li>After which block, at which tokens, and how strongly is it added? <span class="where">Adding the Vector</span></li>
+      </ol></div>` });
 
-add({ group: "Steering Vector", short: "Residual stream", title: "The residual stream",
-  lede: "Each token is carried through the model as a vector of 512 numbers. Every block adds its output to this vector instead of replacing it, so the vector is called the residual stream.",
+add({ group: "Steering Vector", short: "Residual stream", title: "Where to add it: the residual stream",
+  lede: "To steer from the inside, the vector has to go into something that every later block reads. Each token is carried through the model as a vector of 512 numbers, and every block adds to that vector instead of replacing it. This running vector is the residual stream.",
   hand: `${T} vectors × 512 numbers after block ${B}`,
   render: () => {
     const m = Math.max(...D.prompt_norms);
+    let lines = `x${SUB(0)} = embedding of ${LAST}\n`;
+    for (let b = 1; b <= NUM_BLOCKS; b++) {
+      lines += `x${SUB(b)} = x${SUB(b - 1)} + attention${SUB(b)} + feed-forward${SUB(b)}`;
+      lines += b === NUM_BLOCKS ? `  <span class="dim">→ next word</span>` : "\n";
+    }
     return `<div class="cols">
-      <div class="box"><div class="label">Length of each prompt vector after block ${B}</div>
-        <div class="bars">${D.tokens.map((t, i) => `<div class="bar"><span class="t">${esc(t)}</span><span class="track-b"><span class="fill" style="width:${(D.prompt_norms[i] / m) * 100}%"></span></span><span class="n">${D.prompt_norms[i]}</span></div>`).join("")}</div></div>
+      <div class="box"><div class="label">How the vector of ${esc(LAST)} grows</div>
+        <pre class="eq">${lines}</pre>
+        <p class="note">Attention adds what the token gathers from the tokens before it. The feed-forward network adds what it computes from the token on its own. Nothing is replaced, so x${SUB(NUM_BLOCKS)} is the embedding plus ${2 * NUM_BLOCKS} additions.</p>
+        <p class="note">Every prompt token is updated like this in every block. Only the last one, ${mono(LAST)}, is turned into the guess for the next word, but it reads the others through attention.</p></div>
       <div class="box"><div class="label">Why this makes steering possible</div>
-        <p class="note">Every block reads the same running vector and adds to it. A vector added from outside after block ${B} therefore looks to blocks ${B + 1} to ${NUM_BLOCKS} as if block ${B} had produced it, and they build on it in the same way.</p>
-        <p class="note">The lengths here, about ${Math.round(Math.min(...D.prompt_norms))} to ${Math.round(m)}, matter later: a steering vector only has an effect if it is comparable in size.</p></div></div>`;
+        <pre class="eq">x${SUB(B)} = x${SUB(B - 1)} + attention${SUB(B)} + feed-forward${SUB(B)} <span class="hot">+ vector</span></pre>
+        <p class="note">Blocks ${B + 1} to ${NUM_BLOCKS} read x${SUB(B)} without knowing where each part of the sum came from. To them, a vector added from outside looks like something block ${B} produced, so they build on it in the same way, and it reaches the next word.</p></div></div>
+      <div class="box"><div class="label">Length of each prompt vector after block ${B}</div>
+        <div class="bars">${D.tokens.map((t, i) => `<div class="bar"><span class="t">${esc(t)}</span><span class="track-b"><span class="fill" style="width:${(D.prompt_norms[i] / m) * 100}%"></span></span><span class="n">${D.prompt_norms[i]}</span></div>`).join("")}</div>
+        <p class="note">These lengths, about ${Math.round(Math.min(...D.prompt_norms))} to ${Math.round(m)}, matter later: an added vector only has an effect if it is comparable in size.</p></div>`;
   } });
 
-add({ group: "Steering Vector", short: `Read "dragon"`, title: `Read the word for the concept`,
-  lede: `The model reads ${D.concept_tokens.dragon[0]} on its own, and the residual stream after block ${B} is taken at that token. This vector is what the model has made of a dragon at that point.`,
+add({ group: "Steering Vector", short: `Read "dragon"`, title: "Which vector: read the word for the concept",
+  lede: `The vector is computed once, before generation, and separately from the prompt. ${D.concept_tokens.dragon[0]} is given to the model on its own, as a text of a single token. Its vector after block ${B} is kept, and the rest of the output is ignored.`,
   hand: `the vector of ␣dragon after block ${B} (length ${V.dragon_norm})`,
   render: () => {
     const m = absMax(V.dragon, V.girl);
-    return `<div class="box"><div class="label">Residual stream after block ${B}</div>
+    let cells = `<div class="cellp off"><span>␣dragon</span><span class="plus">embedding</span></div>`;
+    for (let b = 1; b <= NUM_BLOCKS; b++) {
+      cells += b === B
+        ? `<div class="cellp on"><span>block ${b}</span><span class="plus">kept</span></div>`
+        : `<div class="cellp off"><span>block ${b}</span><span class="plus">${b < B ? "runs" : "ignored"}</span></div>`;
+    }
+    return `<div class="box"><div class="label">One run of the model, on ␣dragon alone</div>
+      <div class="pos">${cells}</div>
+      <p class="note">This works because, when the model reads a word, it stores what it knows about that word in the residual stream, in the form the later blocks expect. The model therefore already computes a vector for a dragon, and it only has to be read out. It is read after block ${B}, the same place where it will be added.</p></div>
+      <div class="box"><div class="label">Residual stream after block ${B}, each word read on its own</div>
       <div class="vrow"><span class="tag">␣dragon</span>${strip(V.dragon, m)}</div>
       <div class="vrow"><span class="tag">␣girl</span>${strip(V.girl, m)}</div>
       ${vecLegend}</div>
-      <p class="note">${mono("␣dragon")} is a single token in the vocabulary, so it gives exactly one vector. Its length is ${V.dragon_norm}, close to the ${V.girl_norm} of ${mono("␣girl")} and to the prompt vectors.</p>
-      <p class="note">The two vectors already look different, but they also share a lot: both are nouns that a story names after "a little". Their cosine similarity is ${V.cos}, where 1 would mean the same direction and 0 unrelated ones.</p>` ;
+      <p class="note">${mono("␣dragon")} is a single token in the vocabulary, so it gives exactly one vector: the embedding of the word plus what block ${B} added to it. With no other tokens around it, attention has nothing else to look at, so the vector describes the word without any context. Its length is ${V.dragon_norm}, close to the ${V.girl_norm} of ${mono("␣girl")} and to the prompt vectors.</p>
+      <p class="note">The two vectors point in mostly different directions: their cosine similarity is ${V.cos}, where 1 would mean the same direction and 0 nothing in common. The part they do share is what any single word in that place has, such as being a noun.</p>`;
   } });
 
 add({ group: "Steering Vector", short: `Subtract "girl"`, title: "Keep only what makes it a dragon",
-  lede: "Subtracting the vector of a second word cancels what the two words share. What is left mostly describes what separates a dragon from a girl. This step is optional.",
+  lede: "The dragon vector also carries what every word in its place has, such as being a noun, and adding that to the prompt is only noise. Reading a second word the same way and subtracting its vector cancels what the two share. This step is optional.",
   hand: `steering vector = ␣dragon − ␣girl (length ${V.diff_norm})`,
   render: () => {
     const m = absMax(V.dragon, V.girl, V.diff);
@@ -361,36 +402,47 @@ add({ group: "Steering Vector", short: `Subtract "girl"`, title: "Keep only what
       <div class="op">=</div>
       <div class="vrow sum"><span class="tag">vector</span>${strip(V.diff, m)}</div>
       ${vecLegend}</div>
-      <p class="note">The difference points away from ${mono("␣girl")} and towards ${mono("␣dragon")} at the same time, which is exactly what this prompt needs, since ${mono("␣girl")} is the model's first choice. Its length is ${V.diff_norm}, about as long as the residual stream itself.</p>` ;
+      <div class="cols">
+        <div class="box"><div class="label">Why ␣girl</div>
+          <p class="note">Any other noun would also cancel the shared parts. ${mono("␣girl")} is chosen because it is the model's first choice after this prompt (${pct(OFF.top[0].p)}). The difference therefore means "less girl, more dragon": it takes away the habit and adds the concept in one step.</p></div>
+        <div class="box"><div class="label">Its length</div>
+          <p class="note">The steering vector is ${V.diff_norm} long, about as long as the prompt vectors. It is also longer than ${mono("␣dragon")} alone (${V.dragon_norm}), so at the same strength it pushes harder. Part of its better result may come from that.</p></div></div>`;
   } });
 
-add({ group: "Adding the Vector", short: "Prompt only", title: `Add it after block ${B}, at the prompt tokens`,
-  lede: `During generation, the steering vector times a strength of 1 is added to the residual stream after block ${B}, at every prompt token. The new tokens are computed normally.`,
-  hand: `${T} steered vectors after block ${B}`,
-  render: () => {
-    const m = absMax(D.prompt_stream_last, D.steered_last);
-    return `<div class="box"><div class="label">Where the vector is added</div>
-      <div class="pos">${D.tokens.map((t) => `<div class="cellp on"><span>${esc(t)}</span><span class="plus">+ vector</span></div>`).join("")}
-        <div class="cellp off"><span>new</span><span class="plus">unchanged</span></div><div class="cellp off"><span>new</span><span class="plus">unchanged</span></div></div>
-      <p class="note">The new tokens are not steered directly. Attention lets them read the steered prompt, so the story starts out about a dragon and is then told as usual.</p></div>
-      <div class="box"><div class="label">The vector of ${esc(LAST)} after block ${B}</div>
-        <div class="vrow"><span class="tag">before</span>${strip(D.prompt_stream_last, m)}</div>
-        <div class="vrow sum"><span class="tag">+ vector</span>${strip(D.steered_last, m)}</div>
-        ${vecLegend}</div>`;
-  } });
-
-add({ group: "Adding the Vector", short: "Later blocks", title: "The later blocks build on it",
-  lede: `Blocks ${B + 1} to ${NUM_BLOCKS} read the steered vectors as if they were their own. Applying the output layer after each block shows how the guess for the next word changes along the way.`,
-  hand: `next word after "${esc(LAST)}": ␣dragon ${pct(ON.dragon)}`,
+add({ group: "Adding the Vector", short: `Block ${B}`, title: `After which block: block ${B}`,
+  lede: `The vector is added after block ${B} of ${NUM_BLOCKS}, the same place where it was read, so the later blocks receive it in the form they expect. Block ${B} is early enough that ${NUM_BLOCKS - B} blocks are left to build on it.`,
+  hand: `vector added after block ${B}`,
   render: () => {
     const col = (p, color) => `<div class="col"><span style="height:${p * 100}%; background: var(${color})"></span></div>`;
     const row = (r, label) => `<div class="box"><div class="label">${label}</div><div class="blocks">${r.lens.map((x, i) => `
       <div class="vbar"><div class="label">Block ${i + 1}</div>
         <div class="blocks" style="grid-template-columns: 1fr 1fr; gap: 4px; width: 100%">${col(x.girl, "--accent")}${col(x.dragon, "--warm")}</div>
         <span class="n">${pct(x.girl)} · ${pct(x.dragon)}</span></div>`).join("")}</div></div>`;
-    return `<div class="legend"><span><i class="sw" style="background: var(--accent)"></i>␣girl</span><span><i class="sw" style="background: var(--warm)"></i>␣dragon</span><span>probability of the next word after each block</span></div>
-      <div class="cols">${row(OFF, "Not steered")}${row(ON, "Steered")}</div>
-      <p class="note">Right after block ${B}, the steered guess for ${mono("␣dragon")} is still only ${pct(ON.lens[0].dragon)}, but ${mono("␣girl")} has already dropped from ${pct(OFF.lens[0].girl)} to ${pct(ON.lens[0].girl)}. Blocks ${B + 1} to ${NUM_BLOCKS} turn the added vector into the word: ${pct(ON.lens[1].dragon)}, ${pct(ON.lens[2].dragon)}, then ${pct(ON.dragon)}. This is why the vector goes in early: added after the last blocks, it has little effect in this model.</p>`;
+    return `<div class="legend"><span><i class="sw" style="background: var(--accent)"></i>␣girl</span><span><i class="sw" style="background: var(--warm)"></i>␣dragon</span><span>probability of the next word, read after each block by applying the output layer early</span></div>
+      <div class="cols">${row(OFF, "Not steered")}${row(ON, `Steered after block ${B}`)}</div>
+      <p class="note">Right after block ${B}, the steered guess for ${mono("␣dragon")} is still only ${pct(ON.lens[0].dragon)}, but ${mono("␣girl")} has already dropped from ${pct(OFF.lens[0].girl)} to ${pct(ON.lens[0].girl)}. Blocks ${B + 1} to ${NUM_BLOCKS} read the steered vectors as if they were their own and turn them into the word: ${pct(ON.lens[1].dragon)}, ${pct(ON.lens[2].dragon)}, then ${pct(ON.dragon)}. The vector needs these blocks after it.</p>
+      <div class="box"><div class="label">The same vector at each block, added at the prompt tokens</div>
+        ${hitsTable("Vector read and added after", D.by_block.map((x) => ["block " + x.block, x.hits]), 0)}
+        <p class="note">Block ${B} finds the most dragons. Deeper is not simply worse, since block 3 does better than block 2, but after block ${NUM_BLOCKS} no blocks are left to build on the vector, and it almost never works. ${storiesNote}</p></div>`;
+  } });
+
+add({ group: "Adding the Vector", short: "Prompt tokens", title: "At which tokens: all of the prompt",
+  lede: `The vector is added at all ${T} prompt tokens, and only there. The prompt tells the model what the story is about, and every new token reads it through attention, so the new tokens can be computed normally.`,
+  hand: `${T} steered vectors after block ${B}`,
+  render: () => {
+    const m = absMax(D.prompt_stream_last, D.steered_last);
+    return `<div class="box"><div class="label">Where the vector is added</div>
+      <div class="pos">${D.tokens.map((t) => `<div class="cellp on"><span>${esc(t)}</span><span class="plus">+ vector</span></div>`).join("")}
+        <div class="cellp off"><span>new</span><span class="plus">unchanged</span></div><div class="cellp off"><span>new</span><span class="plus">unchanged</span></div></div>
+      <p class="note">Each prompt token gets the vector once, after block ${B}. The new tokens are not steered directly: attention lets them read the steered prompt, so the story starts out about a dragon and is then told as usual.</p></div>
+      <div class="box"><div class="label">Which tokens to steer, after block ${B}</div>
+        ${hitsTable("Vector added at", D.by_positions.map((x) => [x.label, x.hits]), 2)}
+        <p class="note">One token is not enough, not even ${mono(LAST)}, the token that makes the prediction. Attention mixes what a token reads from all the tokens before it, so a change at a single token is too diluted to reach the prediction.</p>
+        <p class="note">Steering every token, including the new ones, finds a dragon in every story, but the vector is then added to each word as it is written, and the text falls apart: "He lived lived in a small. The roared to himself, lived in the dark." At half the strength, it finds fewer dragons than steering only the prompt. ${storiesNote}</p></div>
+      <div class="box"><div class="label">The vector of ${esc(LAST)} after block ${B}</div>
+        <div class="vrow"><span class="tag">before</span>${strip(D.prompt_stream_last, m)}</div>
+        <div class="vrow sum"><span class="tag">+ vector</span>${strip(D.steered_last, m)}</div>
+        ${vecLegend}</div>`;
   } });
 
 add({ group: "Adding the Vector", short: "Strength", title: "How strong to push",
@@ -404,7 +456,7 @@ add({ group: "Adding the Vector", short: "Strength", title: "How strong to push"
       <div class="cols">
         <div class="box"><div class="label">Next word after ${esc(LAST)}, strength ${st.s}</div>${bars(topWords(r), "␣dragon")}</div>
         <div class="box"><div class="label">Story with seed ${D.seed}, strength ${st.s}</div>${story(r.story)}</div></div>
-      <p class="note">At strength 1 the vector is added at full length, about as long as the residual stream. Up to 0.5, the model still writes a boy or a dog. At 2 and above, even the grammar after "a little" fails. This project uses 1.</p>`;
+      <p class="note">At strength 1 the vector is added at full length, about as long as the residual stream. Up to 0.5, the model still writes a boy or a dog. At 4, even the grammar after "a little" fails. At 10 the vector is about 390 long, about ten times as long as the prompt vectors, so it drowns them out: the model can no longer read what the prompt said, the next word is spread thinly over odd choices, and not even a dragon is left in the story. This project uses 1.</p>`;
   } });
 
 add({ group: "Result", short: "Same seed", title: "The same story, without and with steering",
@@ -417,17 +469,14 @@ add({ group: "Result", short: "Same seed", title: "The same story, without and w
 
 add({ group: "Result", short: "How often", title: "How often it works",
   lede: "Each row wrote 64 stories of 80 new tokens from the same prompt. A story counts when it contains \"dragon\" or \"dragons\".",
-  hand: "92% of stories with a dragon",
+  hand: `${share(D.results[2].hits)} of stories with a dragon`,
   render: () => {
-    const rows = [["None", 0, 0.67], ["Towards ␣dragon", 0.64, 1.02], ["From ␣girl towards ␣dragon", 0.92, 0.87]];
-    return `<div class="box"><table class="res"><thead><tr><th>Steering</th><th colspan="2">Stories with a dragon</th><th class="n">Fluency</th></tr></thead><tbody>
-      ${rows.map((x, i) => `<tr class="${i === 2 ? "best" : ""}"><td class="mono">${esc(x[0])}</td><td style="width: 40%"><span class="track-b"><span class="fill" style="width:${x[1] * 100}%"></span></span></td><td class="n">${Math.round(x[1] * 100)}%</td><td class="n">${x[2]}</td></tr>`).join("")}
+    const rows = D.results.map((x) => [x.label, x.hits / D.stories_n]);
+    return `<div class="box"><table class="res"><thead><tr><th>Steering</th><th colspan="2">Stories with a dragon</th></tr></thead><tbody>
+      ${rows.map((x, i) => `<tr class="${i === 2 ? "best" : ""}"><td class="mono">${esc(x[0])}</td><td style="width: 40%"><span class="track-b"><span class="fill" style="width:${x[1] * 100}%"></span></span></td><td class="n">${Math.round(x[1] * 100)}%</td></tr>`).join("")}
       </tbody></table></div>
-      <div class="cols">
-        <div class="box"><div class="label">Fluency</div>
-          <p class="note">The unsteered model reads each story, and its average cross-entropy per token is the fluency: how surprised the normal model is by the text. Lower means more natural. Subtracting ${mono("␣girl")} finds more dragons and keeps the text more natural than ${mono("␣dragon")} alone.</p></div>
         <div class="box"><div class="label">What steering cannot do</div>
-          <p class="note">It only brings out a concept the model has already learned. A goblin failed in every setting: ${mono("␣goblin")} is not even one token, it is split into ${D.concept_tokens.goblin.map(mono).join(" ")}, and the word appears in only 62 of the 2.72 million training stories. A dragon appears 56,220 times.</p></div></div>`;
+          <p class="note">It only brings out a concept the model has already learned. A goblin failed in every setting: ${mono("␣goblin")} is not even one token, it is split into ${D.concept_tokens.goblin.map(mono).join(" ")}, and the word appears in only 62 of the 2.72 million training stories. A dragon appears 56,220 times.</p></div>`;
   } });
 
 /* Navigation */
