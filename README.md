@@ -953,22 +953,22 @@ With the steering vector found, three choices remain. Each was tested by writing
 
 - After which block: the vector is added after block 1 of 4, the same place where it was read, so the later blocks receive it in the form they expect. Block 1 is early enough that three blocks are left to turn it into a different next word. Added after a later block, it finds fewer dragons, though deeper is not simply worse: block 3 does better than block 2. After block 4, no blocks are left to build on the vector, and it almost never works.
 
-| Vector read and added after | Stories with a dragon |
-|---|---|
-| Block 1 | 89% |
-| Block 2 | 45% |
-| Block 3 | 69% |
-| Block 4 | 9% |
+    | Vector read and added after | Stories with a dragon |
+    |---|---|
+    | Block 1 | 89% |
+    | Block 2 | 45% |
+    | Block 3 | 69% |
+    | Block 4 | 9% |
 
 - At which tokens: the vector is added at all the prompt tokens, and only there. The prompt is what tells the model what the story is about, and every new token reads it through attention. Steering the prompt is therefore enough for the story to start out about a dragon, while the new tokens are computed normally, so the rest of the story is told as usual. One token is not enough, not even `" little"`, the token that makes the prediction: attention mixes what a token reads from all the tokens before it, so a change at a single token is too diluted to reach the prediction. Adding the vector at every token, including the new ones, finds a dragon in every story, but the vector is then added to each word as it is written, and the text falls apart: `"He lived lived in a small. The roared to himself, lived in the dark."` At half the strength, it finds fewer dragons than steering only the prompt.
 
-| Vector added after block 1 at | Stories with a dragon |
-|---|---|
-| Only `"Once"` | 0% |
-| Only `" little"` | 0% |
-| All prompt tokens | 89% |
-| Every token, strength 1 | 100% |
-| Every token, strength 0.5 | 70% |
+    | Vector added after block 1 at | Stories with a dragon |
+    |---|---|
+    | Only `"Once"` | 0% |
+    | Only `" little"` | 0% |
+    | All prompt tokens | 89% |
+    | Every token, strength 1 | 100% |
+    | Every token, strength 0.5 | 70% |
 
 - How strongly: before it is added, the vector is multiplied by a number called the *strength*. The strength is set to `1`, since the vector is already about as long as the residual stream vectors of the prompt. Much weaker, and nothing changes; much stronger, and the vector drowns out the prompt, so the text breaks.
 
