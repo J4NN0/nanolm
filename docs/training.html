@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Follow how nanolm learns: from random weights that write noise, through 5,000 training steps, to a model that writes stories.">
-<title>From Noise to Stories</title>
+<title>Training the Model</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -182,7 +182,7 @@ header p { margin: 8px 0 0; color: var(--muted); max-width: 64ch; }
 <div class="wrap">
   <header>
     <a class="home" href="index.html">← All walkthroughs</a>
-    <h1>From <span class="was">noise</span> to <span class="q">stories</span></h1>
+    <h1>Training the model</h1>
     <p>Follow how the model learns: it starts from random weights, and after 5,000 small corrections it writes stories. All numbers come from a run of the nanolm training with the default settings (22.7 million weights, 10,000-token vocabulary, TinyStories), which also saved the weights at a few steps along the way.</p>
   </header>
 
@@ -318,7 +318,7 @@ function hookCharts() {
 const steps = [];
 const add = (s) => steps.push(s);
 
-add({ group: "The Start", short: "Random weights", title: "Before training: random numbers",
+add({ group: "The Start", short: "Random weights", title: "The model before training",
   lede: `The model starts with ${fmt(D.num_params)} weights set to small random numbers. The structure is already complete: tokens go in, and a probability for each of the 10,000 tokens comes out. But nothing has been learned yet, so every token gets about the same chance.`,
   hand: `${fmt(D.num_params)} random weights`,
   render: () => `<div class="cols">
@@ -328,7 +328,7 @@ add({ group: "The Start", short: "Random weights", title: "Before training: rand
         <p class="note">Without any preference, sampling picks tokens from all over the vocabulary.</p></div></div>
     <p class="note">Training will change these weights, a little at a time, so that the correct next token gets more probability. It never sees rules of grammar or a list of words: it only sees text, and the correction after each guess.</p>` });
 
-add({ group: "One Step", short: "The task", title: "The task: predict the next token",
+add({ group: "One Step", short: "The task", title: "Predicting the next token",
   lede: "Training asks the model the same question as generation: which token comes next? The difference is what happens to the guess. When generating, it is added to the text. When training, it is compared with the token that really comes next in the story. The model makes one guess after every token of a snippet, all at once, and the correct answers are simply the next tokens of the same text, so no one has to label anything.",
   hand: `${D.batch_size} snippets of ${D.context_length} tokens per step`,
   render: () => {
@@ -344,7 +344,7 @@ add({ group: "One Step", short: "The task", title: "The task: predict the next t
         <p class="note">Each step takes ${D.batch_size} random snippets of ${D.context_length} tokens from the training stories: ${fmt(D.batch_size * D.context_length)} guesses at once. Over ${fmt(D.max_steps)} steps that is about ${Math.round(D.batch_size * D.context_length * D.max_steps / 1e6)} million guesses.</p></div>`;
   } });
 
-add({ group: "One Step", short: "The loss", title: "How wrong it is: the loss",
+add({ group: "One Step", short: "The loss", title: "Measuring each guess with the loss",
   lede: "The model does not answer with a single token: it gives a probability to each of the 10,000 tokens. To grade a guess, only the probability of the correct token is looked at. The loss turns that probability into a penalty, −log(probability): 100% costs 0, and the cost grows quickly as the probability falls towards 0. The loss of a step is the average penalty over all of its guesses.",
   hand: "",
   state: { s: 0 },
@@ -360,7 +360,7 @@ add({ group: "One Step", short: "The loss", title: "How wrong it is: the loss",
         <p class="note">The logarithm punishes confident mistakes hard: giving the correct token almost nothing costs far more than being unsure.</p></div>`;
   } });
 
-add({ group: "One Step", short: "The update", title: "How it improves: nudge every weight",
+add({ group: "One Step", short: "The update", title: "Updating the weights",
   lede: "After the loss is computed, the model works out, for every one of its weights, whether a tiny increase would raise or lower the loss, and by how much. This is the gradient. Each weight then moves a small step in the direction that lowers the loss.",
   hand: "one small step for every weight",
   render: () => `<div class="box"><div class="label">One step, for each weight</div>
@@ -394,7 +394,7 @@ change        = 0.001</pre></div>
       <div class="box"><div class="label">Decay: finish small</div>
         <p class="note">Near the end the model is already good. Large moves would keep jumping past the best weights, while small moves let them settle there.</p></div></div>` });
 
-add({ group: "5,000 Steps", short: "Loss curve", title: "The loss, step by step",
+add({ group: "5,000 Steps", short: "Loss curve", title: "The training loss over 5,000 steps",
   lede: "Every step repeats the same three things: guess, measure the loss, nudge the weights. The loss falls quickly at first, as the model learns the easy patterns, and then more and more slowly.",
   hand: `loss from ${D.train[0][1].toFixed(2)} to ${D.train[D.train.length - 1][1].toFixed(2)}`,
   render: () => {
@@ -410,7 +410,7 @@ add({ group: "5,000 Steps", short: "Loss curve", title: "The loss, step by step"
       <p class="note">The line starts at ${D.uniform_loss.toFixed(2)}, the loss of giving each of the 10,000 tokens the same chance. The curve is jagged because each step measures a different random batch of snippets, some easier than others. Hover over the chart to read the values.</p>`;
   } });
 
-add({ group: "5,000 Steps", short: "Watch it learn", title: "What the model writes along the way",
+add({ group: "5,000 Steps", short: "Watch it learn", title: "Stories written at different training steps",
   lede: "The weights were saved at a few steps during training. Choose one to see what the model knew at that point: the same prompt, the same sentence, and the same random seed every time.",
   hand: "",
   state: { s: 100 },
@@ -426,7 +426,7 @@ add({ group: "5,000 Steps", short: "Watch it learn", title: "What the model writ
       <p class="note">${D.stage_notes[String(st.s)] || ""}</p>`;
   } });
 
-add({ group: "Result", short: "New stories", title: "Learning, not memorizing",
+add({ group: "Result", short: "New stories", title: "Checking for memorization with validation stories",
   lede: "A low training loss can mean two things. The model may have learned how stories are usually written, which helps with any story. Or it may have memorized the stories it trained on, which helps only with those. To tell them apart, the loss is also measured on validation stories: stories that are never used to change the weights. If the model had only memorized its training stories, the validation loss would stay high while the training loss keeps falling.",
   hand: `validation loss ${finalValid.toFixed(2)}`,
   render: () => `<div class="box"><div class="label">Training and validation loss</div>

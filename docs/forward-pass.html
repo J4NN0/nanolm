@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Follow one prediction of the nanolm language model through every layer, from the prompt to the next word.">
-<title>Once Upon a Forward Pass</title>
+<title>The Forward Pass</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -312,13 +312,13 @@ add({ group: "BPE Tokenizer", short: "Pre-tokenize", title: "Pre-tokenization",
     <div class="chips">${D.pretokens.map((p) => tokChip(p.text)).join("")}</div>
     <p class="note">${mono("␣")} marks a space. A space belongs to the word after it, so ${mono("␣time")} and ${mono("time")} are different tokens. The comma has no space before it, so it stands alone.</p>` });
 
-add({ group: "BPE Tokenizer", short: "Bytes", title: "Split into bytes",
+add({ group: "BPE Tokenizer", short: "Bytes", title: "Splitting each pre-token into bytes",
   lede: "Each piece is written as UTF-8 bytes, numbers from 0 to 255. Every possible text can be written this way, so no input is ever unknown.",
   hand: D.pretokens.map((p) => `[${p.bytes.join(" ")}]`).join(" · "),
   render: () => `<div class="grid-sm">${D.pretokens.map((p) => `<div class="box"><div class="label">"${esc(p.text)}"</div>
     <div class="chips">${p.trace[0].map((s, i) => tokChip(s, p.bytes[i])).join("")}</div></div>`).join("")}</div>` });
 
-add({ group: "BPE Tokenizer", short: "Merges", title: "Replay the learned merges",
+add({ group: "BPE Tokenizer", short: "Merges", title: "Applying the learned merges",
   lede: "During training the tokenizer learned 9,743 merges, in order. Within each piece, the earliest-learned pair present is merged first, again and again, until no learned pair is left.",
   hand: D.pretokens.map((p) => `"${esc(p.text)}"`).join(" · ") + " (one token each)",
   render: () => `<div class="grid-sm">${D.pretokens.map((p) => `<div class="box"><div class="label">"${esc(p.text)}"</div><div class="trace">
@@ -330,13 +330,13 @@ add({ group: "BPE Tokenizer", short: "Merges", title: "Replay the learned merges
     }).join("")}</div></div>`).join("")}</div>
     <p class="note">The number is the merge's position in the learned order: a low number means the pair was very common in the training text. ${mono("␣t")} is merge #1, the most common pair of all, and it is the first step of both ${mono("␣time")} and ${mono("␣there")}.</p>` });
 
-add({ group: "BPE Tokenizer", short: "Token IDs", title: "Look up the token IDs",
+add({ group: "BPE Tokenizer", short: "Token IDs", title: "Looking up the token IDs",
   lede: "Each final token has a fixed ID in the vocabulary. From here on, the model only works with these numbers.",
   hand: inHandIds(D.ids),
   render: () => `<div class="chips">${D.tokens.map((t, i) => tokChip(t, D.ids[i])).join("")}</div>
     <p class="note">IDs 0 to 255 are the single bytes and 256 is ${mono("<|endoftext|>")}. Every ID above that was created by one merge. The comma is ID 44, its byte value. ${mono("␣a")} appears twice and gets the same ID, 259, both times.</p>` });
 
-add({ group: "Transformer", short: "Embedding", title: "Embedding: IDs become vectors",
+add({ group: "Transformer", short: "Embedding", title: "Turning token IDs into vectors",
   lede: "The embedding table has one row of 512 learned numbers for each of the 10,000 tokens. Each ID simply picks its row.",
   hand: `${inHandIds(D.ids)} → ${shape(T, 512)}`,
   render: () => `<div class="box"><div class="label">One row per token</div>
@@ -389,7 +389,7 @@ add({ group: "Transformer", short: `Block × ${NUM_BLOCKS}`, title: `Transformer
       </div>`;
   } });
 
-add({ group: "Transformer", short: "Output layer", title: "Output layer: one score per word",
+add({ group: "Transformer", short: "Output layer", title: "Scoring every token in the vocabulary",
   lede: `A final RMSNorm, then one matrix multiplication turns each 512-number vector into 10,000 scores called logits, one per vocabulary token. Only the last position matters here: it scores what follows "${LAST}".`,
   hand: `10,000 logits for the token after "${esc(LAST)}"`,
   render: () => `<div class="cols"><div class="box"><div class="label">The 12 highest of 10,000 logits</div>
@@ -402,7 +402,7 @@ add({ group: "Transformer", short: "Output layer", title: "Output layer: one sco
 let run = 0;
 const SORTED = D.final.map((x) => { run += x.p07; return { ...x, run }; });
 
-add({ group: "Text Generation", short: "Temperature", title: "Temperature 0.7: scores become probabilities",
+add({ group: "Text Generation", short: "Temperature", title: "Turning scores into probabilities with temperature 0.7",
   lede: "The logits are divided by the temperature, then softmax turns them into probabilities that add up to 1. A temperature below 1 makes the likely tokens even more likely.",
   hand: "10,000 probabilities",
   render: () => `<div class="cols">
@@ -410,7 +410,7 @@ add({ group: "Text Generation", short: "Temperature", title: "Temperature 0.7: s
     <div class="box"><div class="label">Temperature 0.7</div>${bars(D.final.map((x) => ({ token: x.token, v: x.p07 })), { max: 1 })}</div></div>
     <p class="note">At 0.7, ${mono(FIRST.token)} rises from ${pct(FIRST.p1)} to ${pct(FIRST.p07)} and ${mono(SECOND.token)} from ${pct(SECOND.p1)} to ${pct(SECOND.p07)}. Every less likely word loses probability: ${mono(D.final[2].token)} drops from ${pct(D.final[2].p1)} to ${pct(D.final[2].p07)}.</p>` });
 
-add({ group: "Text Generation", short: "Top-p", title: "Top-p 0.9: drop the long tail",
+add({ group: "Text Generation", short: "Top-p", title: "Keeping only the most likely tokens with top-p 0.9",
   lede: "Tokens are sorted from most to least likely and kept until their probabilities add up to 0.9. The rest are dropped, and the kept ones are rescaled to add up to 1 again.",
   hand: `${D.kept} candidates left`,
   render: () => `<div class="cols">
@@ -422,7 +422,7 @@ add({ group: "Text Generation", short: "Top-p", title: "Top-p 0.9: drop the long
     <div class="box"><div class="label">Kept and rescaled: ${D.kept} of 10,000</div>${bars(D.final.filter((x) => x.pp > 0).map((x) => ({ token: x.token, v: x.pp })), { max: 1, fmt: pct1 })}
       <p class="note">Each kept probability is divided by their total, ${pct1(SORTED[1].run)}: ${pct1(FIRST.p07)} / ${pct1(SORTED[1].run)} = ${pct1(FIRST.pp)} and ${pct1(SECOND.p07)} / ${pct1(SORTED[1].run)} = ${pct1(SECOND.pp)}. Now they add up to 100% again.</p></div></div>` });
 
-add({ group: "Text Generation", short: "Sample", title: "Sampling: pick one at random",
+add({ group: "Text Generation", short: "Sample", title: "Sampling the next token",
   lede: "The next token is drawn at random, following the kept probabilities. A token with 53% probability is picked a little more than half the time.",
   hand: `ID ${D.pick.id}`,
   render: () => {
@@ -446,14 +446,14 @@ add({ group: "Text Generation", short: "Sample", title: "Sampling: pick one at r
     matchMedia("(prefers-reduced-motion: reduce)").matches ? go() : requestAnimationFrame(() => requestAnimationFrame(go));
   } });
 
-add({ group: "Text Generation", short: "Decode", title: "Decoding: back to text",
+add({ group: "Text Generation", short: "Decode", title: "Decoding the token into text",
   lede: "Decoding runs the tokenizer backwards. The ID is looked up in the vocabulary, which gives its bytes, and the bytes are read as UTF-8 text.",
   hand: `"${esc(D.pick.text)}"`,
   render: () => `<div class="flow">${tokChip(D.pick.id, "token ID")}<span class="arrow">→</span>
     <span class="chips">${D.pick.bytes.map((b) => tokChip(String.fromCharCode(b) === " " ? "␣" : String.fromCharCode(b), b)).join("")}</span>
     <span class="arrow">→</span>${tokChip(D.pick.token, "text", true)}</div>` });
 
-add({ group: "Text Generation", short: "Result", title: "One token later",
+add({ group: "Text Generation", short: "Result", title: "Adding the token and repeating",
   lede: "The new token is appended, and the whole trip starts again from the embedding with one more ID. Generation stops at <|endoftext|> or after the maximum number of new tokens.",
   hand: `${inHandIds([...D.ids, D.pick.id])} (next round)`,
   render: () => `<div class="bigtext">${esc(D.prompt)}<span class="new">${esc(D.pick.text)}</span><span class="caret"></span></div>

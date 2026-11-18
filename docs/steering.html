@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Follow how nanolm is steered towards a dragon: find a vector for the concept, add it inside the model, and watch the story change.">
-<title>Here Be Dragons</title>
+<title>Steering the Model</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -330,7 +330,7 @@ const add = (s) => steps.push(s);
 
 const SUB = (n) => String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[+c]).join("");
 
-add({ group: "The Habit", short: "Prompt", title: "What the model wants to write",
+add({ group: "The Habit", short: "Prompt", title: "What the model writes without steering",
   lede: "Steering starts from a model with habits of its own. After this prompt it almost always writes a girl or a boy, and a dragon is very unlikely.",
   hand: `"${esc(D.prompt)}"`,
   render: () => `<div class="cols">
@@ -345,7 +345,7 @@ add({ group: "The Habit", short: "Prompt", title: "What the model wants to write
         <li>After which block, at which tokens, and how strongly is it added? <span class="where">Adding the Vector</span></li>
       </ol></div>` });
 
-add({ group: "Steering Vector", short: "Residual stream", title: "Where to add it: the residual stream",
+add({ group: "Steering Vector", short: "Residual stream", title: "The residual stream, where the vector is added",
   lede: "To steer from the inside, the vector has to go into something that every later block reads. Each token is carried through the model as a vector of 512 numbers, and every block adds to that vector instead of replacing it. This running vector is the residual stream.",
   hand: `${T} vectors × 512 numbers after block ${B}`,
   render: () => {
@@ -368,7 +368,7 @@ add({ group: "Steering Vector", short: "Residual stream", title: "Where to add i
         <p class="note">These lengths, about ${Math.round(Math.min(...D.prompt_norms))} to ${Math.round(m)}, matter later: an added vector only has an effect if it is comparable in size.</p></div>`;
   } });
 
-add({ group: "Steering Vector", short: `Read "dragon"`, title: "Which vector: read the word for the concept",
+add({ group: "Steering Vector", short: `Read "dragon"`, title: "Reading the vector for \"dragon\"",
   lede: `The vector is computed once, before generation, and separately from the prompt. ${D.concept_tokens.dragon[0]} is given to the model on its own, as a text of a single token. Its vector after block ${B} is kept, and the rest of the output is ignored.`,
   hand: `the vector of ␣dragon after block ${B} (length ${V.dragon_norm})`,
   render: () => {
@@ -390,7 +390,7 @@ add({ group: "Steering Vector", short: `Read "dragon"`, title: "Which vector: re
       <p class="note">The two vectors point in mostly different directions: their cosine similarity is ${V.cos}, where 1 would mean the same direction and 0 nothing in common. The part they do share is what any single word in that place has, such as being a noun.</p>`;
   } });
 
-add({ group: "Steering Vector", short: `Subtract "girl"`, title: "Keep only what makes it a dragon",
+add({ group: "Steering Vector", short: `Subtract "girl"`, title: "Subtracting the vector for \"girl\"",
   lede: "The dragon vector also carries what every word in its place has, such as being a noun, and adding that to the prompt is only noise. Reading a second word the same way and subtracting its vector cancels what the two share. This step is optional.",
   hand: `steering vector = ␣dragon − ␣girl (length ${V.diff_norm})`,
   render: () => {
@@ -409,7 +409,7 @@ add({ group: "Steering Vector", short: `Subtract "girl"`, title: "Keep only what
           <p class="note">The steering vector is ${V.diff_norm} long, about as long as the prompt vectors. It is also longer than ${mono("␣dragon")} alone (${V.dragon_norm}), so at the same strength it pushes harder. Part of its better result may come from that.</p></div></div>`;
   } });
 
-add({ group: "Adding the Vector", short: `Block ${B}`, title: `After which block: block ${B}`,
+add({ group: "Adding the Vector", short: `Block ${B}`, title: `Adding the vector after block ${B}`,
   lede: `The vector is added after block ${B} of ${NUM_BLOCKS}, the same place where it was read, so the later blocks receive it in the form they expect. Block ${B} is early enough that ${NUM_BLOCKS - B} blocks are left to build on it.`,
   hand: `vector added after block ${B}`,
   render: () => {
@@ -426,7 +426,7 @@ add({ group: "Adding the Vector", short: `Block ${B}`, title: `After which block
         <p class="note">Block ${B} finds the most dragons. Deeper is not simply worse, since block 3 does better than block 2, but after block ${NUM_BLOCKS} no blocks are left to build on the vector, and it almost never works. ${storiesNote}</p></div>`;
   } });
 
-add({ group: "Adding the Vector", short: "Prompt tokens", title: "At which tokens: all of the prompt",
+add({ group: "Adding the Vector", short: "Prompt tokens", title: "Adding the vector at every prompt token",
   lede: `The vector is added at all ${T} prompt tokens, and only there. The prompt tells the model what the story is about, and every new token reads it through attention, so the new tokens can be computed normally.`,
   hand: `${T} steered vectors after block ${B}`,
   render: () => {
@@ -445,7 +445,7 @@ add({ group: "Adding the Vector", short: "Prompt tokens", title: "At which token
         ${vecLegend}</div>`;
   } });
 
-add({ group: "Adding the Vector", short: "Strength", title: "How strong to push",
+add({ group: "Adding the Vector", short: "Strength", title: "Choosing the steering strength",
   lede: "The strength multiplies the vector before it is added. Too weak and nothing changes; too strong and the vector overwhelms the prompt, so the text breaks.",
   hand: "",
   state: { s: 1 },
@@ -467,7 +467,7 @@ add({ group: "Result", short: "Same seed", title: "The same story, without and w
     <div class="box"><div class="label">Steered from ␣girl towards ␣dragon, strength 1</div>${story(ON.story)}</div></div>
     <p class="note">Both stories use a temperature of 0.7 and top-p of 0.9, and stop at 60 new tokens.</p>` });
 
-add({ group: "Result", short: "How often", title: "How often it works",
+add({ group: "Result", short: "How often", title: "How many stories mention a dragon",
   lede: "Each row wrote 64 stories of 80 new tokens from the same prompt. A story counts when it contains \"dragon\" or \"dragons\".",
   hand: `${share(D.results[2].hits)} of stories with a dragon`,
   render: () => {

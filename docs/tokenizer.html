@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Follow how the nanolm tokenizer builds its 10,000 tokens: start from single bytes and keep joining the most common neighbouring pair.">
-<title>Bytes to Tokens</title>
+<title>Training the Tokenizer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -182,7 +182,7 @@ table.list td.r, table.list th.r { text-align: right; }
 <div class="wrap">
   <header>
     <a class="home" href="index.html">← All walkthroughs</a>
-    <h1>From <span class="was">bytes</span> to <span class="q">tokens</span></h1>
+    <h1>Training the tokenizer</h1>
     <p>Follow how the tokenizer builds its vocabulary of 10,000 tokens from the TinyStories training text. All numbers come from a run of the nanolm tokenizer training with the default settings, which recorded every merge along the way.</p>
   </header>
 

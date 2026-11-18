@@ -84,7 +84,7 @@ header p { margin: 10px 0 0; color: var(--muted); max-width: 64ch; }
   <div class="cards">
     <a class="card" href="tokenizer.html">
       <div class="eyebrow">8 steps</div>
-      <h2>From Bytes to Tokens</h2>
+      <h2>Training the Tokenizer</h2>
       <div class="teaser"><span class="was">O n c e</span> <span class="hot">Once</span> upon a time</div>
       <p>See how the tokenizer builds its 10,000 tokens: start from single bytes, count every pair of neighbours, and keep joining the most common pair.</p>
       <div class="chips"><span class="chip">BPE training</span><span class="chip">Merges</span><span class="chip">Vocabulary</span></div>
@@ -93,7 +93,7 @@ header p { margin: 10px 0 0; color: var(--muted); max-width: 64ch; }
 
     <a class="card" href="forward-pass.html">
       <div class="eyebrow">13 steps</div>
-      <h2>Once Upon a Forward Pass</h2>
+      <h2>The Forward Pass</h2>
       <div class="teaser">Once upon a time, there was a little <span class="hot">?</span></div>
       <p>Follow one prediction through every layer: the tokenizer turns the text into IDs, the Transformer blocks turn the IDs into scores, and sampling picks the next word.</p>
       <div class="chips"><span class="chip">BPE tokenizer</span><span class="chip">Transformer</span><span class="chip">Text generation</span></div>
@@ -102,7 +102,7 @@ header p { margin: 10px 0 0; color: var(--muted); max-width: 64ch; }
 
     <a class="card" href="training.html">
       <div class="eyebrow">8 steps</div>
-      <h2>From Noise to Stories</h2>
+      <h2>Training the Model</h2>
       <div class="teaser">Once upon a time, there was a little <span class="was">lake guessesGuess</span> <span class="hot">girl</span></div>
       <p>Watch the model learn: random weights write noise, each step measures how wrong a guess is and nudges every weight, and after 5,000 steps it writes stories.</p>
       <div class="chips"><span class="chip">Loss</span><span class="chip">Learning rate</span><span class="chip">Training</span></div>
@@ -111,7 +111,7 @@ header p { margin: 10px 0 0; color: var(--muted); max-width: 64ch; }
 
     <a class="card" href="steering.html">
       <div class="eyebrow">9 steps</div>
-      <h2>Here Be Dragons</h2>
+      <h2>Steering the Model</h2>
       <div class="teaser">Once upon a time, there was a little <span class="was">girl</span> <span class="hot">dragon</span></div>
       <p>See how the model is pushed towards a concept while it writes: find a vector for "dragon", add it inside the model, and watch the story change without retraining.</p>
       <div class="chips"><span class="chip">Residual stream</span><span class="chip">Steering vector</span><span class="chip">Results</span></div>
