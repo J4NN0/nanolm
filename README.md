@@ -1,8 +1,10 @@
 # NanoLM
 
-A (not large) language model built from scratch.
+A (not large) language model built from scratch, following [Stanford's CS336 course](#resources): the tokenizer, the Transformer, the training loop and text generation are all written by hand, without PyTorch's ready-made layers.
 
-Every part is written by hand, without PyTorch's ready-made layers, following [Stanford's CS336 course](#resources). The model is trained on TinyStories, a collection of short, simple stories for children:
+The repo is meant as study material for learning how a language model works. Each section below explains one concept, why it is needed and how it fits with the others. The [inAteractive walkthroughs](https://j4nn0.github.io/nanolm/) show the same ideas step by step, using the real numbers from this model.
+
+The model is trained on TinyStories, a collection of short, simple stories for children:
 
 - 22.7 million parameters, the numbers the model learns;
 - A vocabulary of 10,000 pieces of text;
