@@ -2,7 +2,7 @@
 
 A (not large) language model built from scratch, following [Stanford's CS336 course](#resources): the tokenizer, the Transformer, the training loop and text generation are all written by hand, without PyTorch's ready-made layers.
 
-The repo is meant as study material for learning how a language model works. Each section below explains one concept, why it is needed and how it fits with the others. The [inAteractive walkthroughs](https://j4nn0.github.io/nanolm/) show the same ideas step by step, using the real numbers from this model.
+The repo is meant as study material for learning how a language model works. Each section below explains one concept, why it is needed and how it fits with the others. The [interactive walkthroughs](https://j4nn0.github.io/nanolm/) show the same ideas step by step, using the real numbers from this model.
 
 The model is trained on TinyStories, a collection of short, simple stories for children:
 
