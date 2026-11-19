@@ -7,7 +7,7 @@ The repo is meant as study material for learning how a language model works. Eac
 The model is trained on TinyStories, a collection of short, simple stories for children:
 
 - 22.7 million parameters, the numbers the model learns;
-- A vocabulary of 10,000 pieces of text;
+- A vocabulary of 10,000 tokens;
 - About 70 minutes of training on an Apple M5 laptop, reading about 41 million pieces;
 - A validation loss of 1.66 on stories it has never seen: on average, it gives the correct next piece about a 1-in-5 chance, out of 10,000 options.
 
